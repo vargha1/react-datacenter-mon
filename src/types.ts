@@ -1,0 +1,50 @@
+/* ---------- Types ---------- */
+export type RectSide = "top" | "bottom" | "left" | "right";
+export interface RectAnchor {
+  shapeId: string;
+  kind: "rect";
+  side: RectSide;
+  t: number;
+}
+export interface CircleAnchor {
+  shapeId: string;
+  kind: "circle";
+  angle: number;
+}
+export interface PolyAnchor {
+  shapeId: string;
+  kind: "poly";
+  edgeIndex: number;
+  t: number;
+}
+export type AnchorDescriptor = RectAnchor | CircleAnchor | PolyAnchor;
+
+export interface IntermediatePoint {
+  x: number;
+  y: number;
+}
+
+export interface Connection {
+  id: string;
+  from: AnchorDescriptor;
+  to: AnchorDescriptor;
+  intermediatePoints: IntermediatePoint[];
+}
+
+export interface Point {
+  x: number;
+  y: number;
+}
+
+export interface Shape {
+  id: string;
+  type: "rect" | "circle" | "triangle" | "line" | "polygon";
+  x: number;
+  y: number;
+  fill: string;
+  width?: number;
+  height?: number;
+  radius?: number;
+  rotation?: number;
+  points?: number[];
+}
