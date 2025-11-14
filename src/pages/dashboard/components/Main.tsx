@@ -30,7 +30,8 @@ export const Main: React.FC = () => {
   const scaleRef = useRef(1);
   const [shapes, setShapes] = useState<Shape[]>([
     {
-      id: "rect1",
+      id: crypto.randomUUID(),
+      name: "rectangle 1",
       type: "rect",
       x: 100,
       y: 150,
@@ -39,7 +40,8 @@ export const Main: React.FC = () => {
       height: 80,
     },
     {
-      id: "circle1",
+      id: crypto.randomUUID(),
+      name: "circle 1",
       type: "circle",
       x: 400,
       y: 200,
@@ -47,7 +49,8 @@ export const Main: React.FC = () => {
       radius: 50,
     },
     {
-      id: "tri1",
+      id: crypto.randomUUID(),
+      name: "triangle 1",
       type: "triangle",
       x: 700,
       y: 200,
