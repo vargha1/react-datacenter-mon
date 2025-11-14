@@ -1,5 +1,5 @@
 import React from "react";
-import { Circle, Line, Rect, RegularPolygon } from "react-konva";
+import { Circle, Line, Rect, RegularPolygon, Text } from "react-konva";
 import type { Point, Shape } from "../../../types";
 import type Konva from "konva";
 import { snapDeltaTo8 } from "../utils/helpers";
@@ -28,168 +28,251 @@ export const ShapeComponent = React.forwardRef<
 
   if (shape.type === "rect") {
     return (
-      <Rect
-        {...commonProps}
-        ref={ref as React.RefObject<Konva.Rect>}
-        width={shape.width ?? 120}
-        height={shape.height ?? 80}
-        fill={shape.fill}
-        onDragMove={(e) => {
-          const evt = (e.evt as MouseEvent) ?? null;
-          if (evt?.shiftKey) {
+      <>
+        <Rect
+          {...commonProps}
+          ref={ref as React.RefObject<Konva.Rect>}
+          width={shape.width ?? 120}
+          height={shape.height ?? 80}
+          fill={shape.fill}
+          onDragMove={(e) => {
+            const evt = (e.evt as MouseEvent) ?? null;
+            if (evt?.shiftKey) {
+              const node = e.target as Konva.Rect;
+              const start = { x: shape.x, y: shape.y };
+              const dx = node.x() - start.x;
+              const dy = node.y() - start.y;
+              const snapped = snapDeltaTo8(dx, dy);
+              node.position({ x: start.x + snapped.x, y: start.y + snapped.y });
+            }
+            onDragMove();
+          }}
+          onDragEnd={(e) => {
             const node = e.target as Konva.Rect;
-            const start = { x: shape.x, y: shape.y };
-            const dx = node.x() - start.x;
-            const dy = node.y() - start.y;
-            const snapped = snapDeltaTo8(dx, dy);
-            node.position({ x: start.x + snapped.x, y: start.y + snapped.y });
-          }
-          onDragMove();
-        }}
-        onDragEnd={(e) => {
-          const node = e.target as Konva.Rect;
-          onDragEnd?.({ x: node.x(), y: node.y() });
-        }}
-        onTransformEnd={(e) => {
-          const node = e.target as Konva.Rect;
-          const newW = (node.width() ?? 0) * (node.scaleX() ?? 1);
-          const newH = (node.height() ?? 0) * (node.scaleY() ?? 1);
-          node.scaleX(1);
-          node.scaleY(1);
-          onDragEnd?.({ x: node.x(), y: node.y(), width: newW, height: newH });
-        }}
-      />
+            onDragEnd?.({ x: node.x(), y: node.y() });
+          }}
+          onTransformEnd={(e) => {
+            const node = e.target as Konva.Rect;
+            const newW = (node.width() ?? 0) * (node.scaleX() ?? 1);
+            const newH = (node.height() ?? 0) * (node.scaleY() ?? 1);
+            node.scaleX(1);
+            node.scaleY(1);
+            onDragEnd?.({
+              x: node.x(),
+              y: node.y(),
+              width: newW,
+              height: newH,
+            });
+          }}
+        />
+
+        {/* center label in rect: Rect x/y is top-left so compute center */}
+        <Text
+          x={(shape.x ?? 0) + (shape.width ?? 120) / 2}
+          y={(shape.y ?? 0) + (shape.height ?? 80) / 2}
+          text={shape.name ?? (shape.id ? shape.id.slice(0, 6) : "")}
+          fontSize={12}
+          fill="#111"
+          ref={(node) => {
+            if (node) {
+              try {
+                const w = node.width() ?? 0;
+                const h = node.height() ?? 0;
+                node.offsetX(w / 2);
+                node.offsetY(h / 2);
+              } catch (e) {}
+            }
+          }}
+        />
+      </>
     );
   }
 
   if (shape.type === "circle") {
     return (
-      <Circle
-        {...commonProps}
-        ref={ref as React.RefObject<Konva.Circle>}
-        radius={shape.radius ?? 50}
-        fill={shape.fill}
-        onDragMove={(e) => {
-          const evt = (e.evt as MouseEvent) ?? null;
-          if (evt?.shiftKey) {
+      <>
+        <Circle
+          {...commonProps}
+          ref={ref as React.RefObject<Konva.Circle>}
+          radius={shape.radius ?? 50}
+          fill={shape.fill}
+          onDragMove={(e) => {
+            const evt = (e.evt as MouseEvent) ?? null;
+            if (evt?.shiftKey) {
+              const node = e.target as Konva.Circle;
+              const start = { x: shape.x, y: shape.y };
+              const dx = node.x() - start.x;
+              const dy = node.y() - start.y;
+              const snapped = snapDeltaTo8(dx, dy);
+              node.position({ x: start.x + snapped.x, y: start.y + snapped.y });
+            }
+            onDragMove();
+          }}
+          onDragEnd={(e) => {
             const node = e.target as Konva.Circle;
-            const start = { x: shape.x, y: shape.y };
-            const dx = node.x() - start.x;
-            const dy = node.y() - start.y;
-            const snapped = snapDeltaTo8(dx, dy);
-            node.position({ x: start.x + snapped.x, y: start.y + snapped.y });
-          }
-          onDragMove();
-        }}
-        onDragEnd={(e) => {
-          const node = e.target as Konva.Circle;
-          onDragEnd?.({ x: node.x(), y: node.y() });
-        }}
-        onTransformEnd={(e) => {
-          const node = e.target as Konva.Circle;
-          const newR = (node.radius() ?? 0) * (node.scaleX() ?? 1);
-          node.scaleX(1);
-          node.scaleY(1);
-          onDragEnd?.({
-            x: node.x(),
-            y: node.y(),
-            radius: newR,
-            rotation: node.rotation(),
-          });
-        }}
-      />
+            onDragEnd?.({ x: node.x(), y: node.y() });
+          }}
+          onTransformEnd={(e) => {
+            const node = e.target as Konva.Circle;
+            const newR = (node.radius() ?? 0) * (node.scaleX() ?? 1);
+            node.scaleX(1);
+            node.scaleY(1);
+            onDragEnd?.({
+              x: node.x(),
+              y: node.y(),
+              radius: newR,
+              rotation: node.rotation(),
+            });
+          }}
+        />
+        <Text
+          x={shape.x ?? 0}
+          y={shape.y ?? 0}
+          text={shape.name ?? (shape.id ? shape.id.slice(0, 6) : "")}
+          fontSize={12}
+          fill="#111"
+          ref={(node) => {
+            if (node) {
+              try {
+                const w = node.width() ?? 0;
+                const h = node.height() ?? 0;
+                node.offsetX(w / 2);
+                node.offsetY(h / 2);
+              } catch (e) {}
+            }
+          }}
+        />
+      </>
     );
   }
 
   if (shape.type === "triangle") {
     return (
-      <RegularPolygon
-        {...commonProps}
-        ref={ref as React.RefObject<Konva.RegularPolygon>}
-        sides={3}
-        radius={shape.radius ?? 70}
-        fill={shape.fill}
-        stroke={shape.fill}
-        strokeWidth={2}
-        onDragMove={(e) => {
-          const evt = (e.evt as MouseEvent) ?? null;
-          if (evt?.shiftKey) {
+      <>
+        <RegularPolygon
+          {...commonProps}
+          ref={ref as React.RefObject<Konva.RegularPolygon>}
+          sides={3}
+          radius={shape.radius ?? 70}
+          fill={shape.fill}
+          stroke={shape.fill}
+          strokeWidth={2}
+          onDragMove={(e) => {
+            const evt = (e.evt as MouseEvent) ?? null;
+            if (evt?.shiftKey) {
+              const node = e.target as Konva.RegularPolygon;
+              const start = { x: shape.x, y: shape.y };
+              const dx = node.x() - start.x;
+              const dy = node.y() - start.y;
+              const snapped = snapDeltaTo8(dx, dy);
+              node.position({ x: start.x + snapped.x, y: start.y + snapped.y });
+            }
+            onDragMove();
+          }}
+          onDragEnd={(e) => {
             const node = e.target as Konva.RegularPolygon;
-            const start = { x: shape.x, y: shape.y };
-            const dx = node.x() - start.x;
-            const dy = node.y() - start.y;
-            const snapped = snapDeltaTo8(dx, dy);
-            node.position({ x: start.x + snapped.x, y: start.y + snapped.y });
-          }
-          onDragMove();
-        }}
-        onDragEnd={(e) => {
-          const node = e.target as Konva.RegularPolygon;
-          onDragEnd?.({ x: node.x(), y: node.y() });
-        }}
-        onTransformEnd={(e) => {
-          const node = e.target as Konva.RegularPolygon;
-          const newR = (node.radius() ?? 0) * (node.scaleX() ?? 1);
-          node.scaleX(1);
-          node.scaleY(1);
-          onDragEnd?.({
-            x: node.x(),
-            y: node.y(),
-            radius: newR,
-            rotation: node.rotation(),
-          });
-        }}
-      />
+            onDragEnd?.({ x: node.x(), y: node.y() });
+          }}
+          onTransformEnd={(e) => {
+            const node = e.target as Konva.RegularPolygon;
+            const newR = (node.radius() ?? 0) * (node.scaleX() ?? 1);
+            node.scaleX(1);
+            node.scaleY(1);
+            onDragEnd?.({
+              x: node.x(),
+              y: node.y(),
+              radius: newR,
+              rotation: node.rotation(),
+            });
+          }}
+        />
+        <Text
+          x={shape.x ?? 0}
+          y={shape.y ?? 0}
+          text={shape.name ?? (shape.id ? shape.id.slice(0, 6) : "")}
+          fontSize={12}
+          fill="#111"
+          ref={(node) => {
+            if (node) {
+              try {
+                const w = node.width() ?? 0;
+                const h = node.height() ?? 0;
+                node.offsetX(w / 2);
+                node.offsetY(h / 2);
+              } catch (e) {}
+            }
+          }}
+        />
+      </>
     );
   }
 
   if (shape.type === "polygon") {
     return (
-      <Line
-        {...commonProps}
-        ref={ref as React.RefObject<Konva.Line>}
-        points={shape.points}
-        closed={true}
-        fill={shape.fill}
-        stroke={shape.fill}
-        strokeWidth={2}
-        onDragMove={(e) => {
-          const evt = (e.evt as MouseEvent) ?? null;
-          if (evt?.shiftKey) {
+      <>
+        <Line
+          {...commonProps}
+          ref={ref as React.RefObject<Konva.Line>}
+          points={shape.points}
+          closed={true}
+          fill={shape.fill}
+          stroke={shape.fill}
+          strokeWidth={2}
+          onDragMove={(e) => {
+            const evt = (e.evt as MouseEvent) ?? null;
+            if (evt?.shiftKey) {
+              const node = e.target as Konva.Line;
+              const start = { x: shape.x, y: shape.y };
+              const dx = node.x() - start.x;
+              const dy = node.y() - start.y;
+              const snapped = snapDeltaTo8(dx, dy);
+              node.position({ x: start.x + snapped.x, y: start.y + snapped.y });
+            }
+            onDragMove();
+          }}
+          onDragEnd={(e) => {
             const node = e.target as Konva.Line;
-            const start = { x: shape.x, y: shape.y };
-            const dx = node.x() - start.x;
-            const dy = node.y() - start.y;
-            const snapped = snapDeltaTo8(dx, dy);
-            node.position({ x: start.x + snapped.x, y: start.y + snapped.y });
-          }
-          onDragMove();
-        }}
-        onDragEnd={(e) => {
-          const node = e.target as Konva.Line;
-          onDragEnd?.({ x: node.x(), y: node.y() });
-        }}
-        onTransformEnd={(e) => {
-          const node = e.target as Konva.Line;
-          const scaleX = node.scaleX() ?? 1;
-          const scaleY = node.scaleY() ?? 1;
+            onDragEnd?.({ x: node.x(), y: node.y() });
+          }}
+          onTransformEnd={(e) => {
+            const node = e.target as Konva.Line;
+            const scaleX = node.scaleX() ?? 1;
+            const scaleY = node.scaleY() ?? 1;
 
-          // Scale the points
-          const oldPoints = shape.points || [];
-          const newPoints = oldPoints.map((p, i) =>
-            i % 2 === 0 ? p * scaleX : p * scaleY
-          );
+            // Scale the points
+            const oldPoints = shape.points || [];
+            const newPoints = oldPoints.map((p, i) =>
+              i % 2 === 0 ? p * scaleX : p * scaleY
+            );
 
-          node.scaleX(1);
-          node.scaleY(1);
-          onDragEnd?.({
-            x: node.x(),
-            y: node.y(),
-            points: newPoints,
-            rotation: node.rotation(),
-          });
-        }}
-      />
+            node.scaleX(1);
+            node.scaleY(1);
+            onDragEnd?.({
+              x: node.x(),
+              y: node.y(),
+              points: newPoints,
+              rotation: node.rotation(),
+            });
+          }}
+        />
+        <Text
+          x={shape.x ?? 0}
+          y={shape.y ?? 0}
+          text={shape.name ?? (shape.id ? shape.id.slice(0, 6) : "")}
+          fontSize={12}
+          fill="#111"
+          ref={(node) => {
+            if (node) {
+              try {
+                const w = node.width() ?? 0;
+                const h = node.height() ?? 0;
+                node.offsetX(w / 2);
+                node.offsetY(h / 2);
+              } catch (e) {}
+            }
+          }}
+        />
+      </>
     );
   }
 

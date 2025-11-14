@@ -47,4 +47,8 @@ export interface Shape {
   radius?: number;
   rotation?: number;
   points?: number[];
+  // optional display name for the shape
+  name?: string;
+  // true if this shape was auto-created by joining lines into a polygon
+  generatedFromLines?: boolean;
 }

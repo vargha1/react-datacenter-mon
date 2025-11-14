@@ -2,9 +2,11 @@ import { useState } from "react";
 import type { Shape } from "../../../types";
 
 /* ---------- Header Component ---------- */
-export const Header: React.FC<{ onAddShape: (type: Shape["type"]) => void }> = ({
-  onAddShape,
-}) => {
+export const Header: React.FC<{
+  onAddShape: (type: Shape["type"]) => void;
+  onScreenshotCurrent?: () => void;
+  onScreenshotFull?: () => void;
+}> = ({ onAddShape, onScreenshotCurrent, onScreenshotFull }) => {
   const [isOpen, setIsOpen] = useState(false);
 
   const shapeTypes: Array<{ type: Shape["type"]; label: string }> = [
@@ -43,6 +45,20 @@ export const Header: React.FC<{ onAddShape: (type: Shape["type"]) => void }> = (
       </div>
       <div className="text-sm text-gray-600">
         Click shapes to draw connections. Click empty space to add waypoints.
+      </div>
+      <div className="ml-auto flex items-center gap-2">
+        <button
+          onClick={onScreenshotCurrent}
+          className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 text-sm"
+        >
+          Screenshot (view)
+        </button>
+        <button
+          onClick={onScreenshotFull}
+          className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300 text-sm"
+        >
+          Screenshot (full)
+        </button>
       </div>
     </div>
   );

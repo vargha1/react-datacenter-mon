@@ -22,9 +22,9 @@ const STROKE_WIDTH = 2;
 const CLAMP_MARGIN = 20;
 
 export const Main: React.FC = () => {
-  const [size, _setSize] = useState({
-    w: 1920,
-    h: 1080,
+  const [size, setSize] = useState({
+    w: window.innerWidth,
+    h: window.innerHeight - 108,
   });
   const [scale, setScale] = useState(1);
   const scaleRef = useRef(1);
@@ -64,6 +64,11 @@ export const Main: React.FC = () => {
   const [mousePos, setMousePos] = useState<Point | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  // When we auto-form polygons from lines, we may need to temporarily suppress
+  // the auto-formation (so undo doesn't immediately re-form). This ref is used
+  // to skip the auto-form effect while performing undo operations.
+  const suppressAutoFormRef = useRef(false);
+
   // Panning refs
   const spacePressedRef = useRef(false);
   const isPanningRef = useRef(false);
@@ -97,6 +102,14 @@ export const Main: React.FC = () => {
 
   const undo = () => {
     if (historyRef.current.length === 0) return;
+
+    // If current state contains an auto-generated polygon, suppress the
+    // auto-formation while we perform the undo to avoid it re-creating.
+    const hasGenerated = shapes.some(
+      (s) => s.type === "polygon" && s.generatedFromLines
+    );
+    if (hasGenerated) suppressAutoFormRef.current = true;
+
     const last = historyRef.current.pop()!;
     futureRef.current.push({
       shapes: JSON.parse(JSON.stringify(shapes)),
@@ -104,6 +117,10 @@ export const Main: React.FC = () => {
     });
     setShapes(last.shapes);
     setConnections(last.connections);
+
+    // allow other effects to run again shortly after
+    if (hasGenerated)
+      setTimeout(() => (suppressAutoFormRef.current = false), 50);
   };
 
   const redo = () => {
@@ -119,12 +136,12 @@ export const Main: React.FC = () => {
 
   const SNAP_THRESHOLD = 15; // pixels
 
-  // useEffect(() => {
-  //   const onResize = () =>
-  //     setSize({ w: window.innerWidth, h: window.innerHeight - 108 });
-  //   window.addEventListener("resize", onResize);
-  //   return () => window.removeEventListener("resize", onResize);
-  // }, []);
+  useEffect(() => {
+    const onResize = () =>
+      setSize({ w: window.innerWidth, h: window.innerHeight - 108 });
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   useEffect(() => {
     if (selectedId && transformerRef.current) {
@@ -157,7 +174,7 @@ export const Main: React.FC = () => {
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Delete" || e.key === "Backspace") {
+      if (e.key === "Delete") {
         if (selectedId) {
           // remove selected shape and related connections
           pushHistory();
@@ -313,11 +330,16 @@ export const Main: React.FC = () => {
     const colors = ["#f66", "#6f6", "#66f", "#ff6", "#f6f", "#6ff"];
     const randomColor = colors[Math.floor(Math.random() * colors.length)];
     const newShape: Shape = {
-      id: `shape-${Date.now()}`,
+      id:
+        typeof crypto !== "undefined" &&
+        typeof (crypto as any).randomUUID === "function"
+          ? (crypto as any).randomUUID()
+          : `shape-${Date.now()}`,
       type,
       x: 200 + Math.random() * 300,
       y: 200 + Math.random() * 200,
       fill: randomColor,
+      name: type + " " + Math.floor(Math.random() * 1000),
       ...(type === "rect" && { width: 120, height: 80 }),
       ...(type === "circle" && { radius: 50 }),
       ...(type === "triangle" && { radius: 70 }),
@@ -497,6 +519,8 @@ export const Main: React.FC = () => {
 
   // Detect and snap line endpoints, then form shapes
   useEffect(() => {
+    if (suppressAutoFormRef.current) return;
+
     const lineShapes = shapes.filter((s) => s.type === "line");
     if (lineShapes.length < 3) return;
 
@@ -648,13 +672,19 @@ export const Main: React.FC = () => {
 
     const colors = ["#f66", "#6f6", "#66f", "#ff6", "#f6f", "#6ff"];
     const newShape: Shape = {
-      id: `shape-${Date.now()}`,
+      id:
+        typeof crypto !== "undefined" &&
+        typeof (crypto as any).randomUUID === "function"
+          ? (crypto as any).randomUUID()
+          : `shape-${Date.now()}`,
       type: "polygon",
       x: centroid.x,
       y: centroid.y,
       fill: colors[Math.floor(Math.random() * colors.length)],
       points: points,
       rotation: 0,
+      generatedFromLines: true,
+      name: "Polygon " + Math.floor(Math.random() * 1000),
     };
 
     // Update connections
@@ -676,9 +706,80 @@ export const Main: React.FC = () => {
     setConnections(updatedConnections);
   };
 
+  // Properties panel handler: update name for selected shape
+  const updateSelectedShapeName = (name: string) => {
+    if (!selectedId) return;
+    pushHistory();
+    setShapes((prev) =>
+      prev.map((s) => (s.id === selectedId ? { ...s, name } : s))
+    );
+  };
+
+  // Screenshot helpers: capture current view or full canvas
+  const screenshotCurrent = () => {
+    const st = stageRef.current;
+    if (!st) return;
+    // use toDataURL which respects current transforms and device pixel ratio
+    const url = st.toDataURL({ pixelRatio: window.devicePixelRatio || 2 });
+    // trigger download
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `stage-view-${Date.now()}.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
+  const screenshotFull = () => {
+    const st = stageRef.current;
+    if (!st) return;
+    // Capture the full canvas (unzoomed/unpanned): temporarily reset scale & position
+    const prevScale = st.scaleX() ?? 1;
+    const prevPos = { x: st.x() ?? 0, y: st.y() ?? 0 };
+
+    try {
+      st.scale({ x: 1, y: 1 });
+      st.position({ x: 0, y: 0 });
+      st.batchDraw();
+
+      // ensure drawing finished before capturing
+      requestAnimationFrame(() => {
+        const dataUrl = st.toDataURL({
+          pixelRatio: window.devicePixelRatio || 2,
+        });
+        const a = document.createElement("a");
+        a.href = dataUrl;
+        a.download = `stage-full-${Date.now()}.png`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+
+        // restore previous transform
+        st.scale({ x: prevScale, y: prevScale });
+        st.position(prevPos);
+        st.batchDraw();
+      });
+    } catch (e) {
+      // fallback: try to capture current view
+      const dataUrl = st.toDataURL({
+        pixelRatio: window.devicePixelRatio || 2,
+      });
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = `stage-full-${Date.now()}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+  };
+
   return (
     <div className="relative w-full">
-      <Header onAddShape={addShape} />
+      <Header
+        onAddShape={addShape}
+        onScreenshotCurrent={screenshotCurrent}
+        onScreenshotFull={screenshotFull}
+      />
       <div className="mt-16">
         <Stage
           width={size.w}
@@ -781,6 +882,37 @@ export const Main: React.FC = () => {
           </Layer>
         </Stage>
       </div>
+      {/* Properties panel for selected shape */}
+      {selectedId && (
+        <div className="absolute right-4 top-20 bg-white border rounded p-3 shadow z-20 w-64">
+          <h3 className="font-bold text-sm mb-2">Properties</h3>
+          {(() => {
+            const s = shapes.find((sh) => sh.id === selectedId);
+            if (!s) return <div>Not found</div>;
+            return (
+              <div className="text-sm">
+                <div className="mb-2">
+                  <div className="text-xs text-gray-500">ID</div>
+                  <div className="break-words text-xs">{s.id}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500">Name</div>
+                  <input
+                    className="w-full border rounded px-2 py-1 text-sm"
+                    value={s.name ?? ""}
+                    onChange={(e) => updateSelectedShapeName(e.target.value)}
+                  />
+                </div>
+                {s.generatedFromLines && (
+                  <div className="mt-2 text-xs text-gray-600">
+                    Generated from lines
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+      )}
     </div>
   );
 };
