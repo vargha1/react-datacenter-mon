@@ -17,3 +17,7 @@
     --color-warn: #fff;
     --color-error: #fff;
 }
+
+html, body{
+    background-color: white;
+}

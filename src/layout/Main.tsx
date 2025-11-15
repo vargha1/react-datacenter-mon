@@ -4,7 +4,7 @@ import Footer from "../components/ui/Footer";
 
 export default function Main() {
   return (
-    <div className="w-full flex flex-col items-center mt-[84px]">
+    <div className="w-full flex flex-col items-center mt-[84px] bg-white">
       <Header />
       <Outlet />
       <Footer />

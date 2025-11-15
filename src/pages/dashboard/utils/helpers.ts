@@ -29,11 +29,15 @@ export function polygonVertices(
   node: Konva.Node,
   opts?: { local?: boolean }
 ): Point[] {
-  if (node.getClassName() === "Line" && (node as any).closed?.() === true) {
+  if (node.getClassName() === "Line") {
     const line = node as Konva.Line;
     const pts = line.points();
-    if (!Array.isArray(pts)) return [];
+    if (!Array.isArray(pts) || pts.length < 4) return [];
 
+    // Build vertices directly from the points array (pairs). This handles
+    // both absolute-point lines (points already in stage coords) and local
+    // point lines; if an absolute transform is available we use it to map
+    // local points to stage space.
     const localVerts: Point[] = [];
     for (let i = 0; i < pts.length; i += 2) {
       localVerts.push({ x: pts[i], y: pts[i + 1] });
@@ -41,55 +45,47 @@ export function polygonVertices(
 
     if (opts?.local) return localVerts;
 
-    const tr = (node as any).getAbsoluteTransform?.();
-    if (tr && typeof tr.point === "function") {
+    const trRaw = (
+      node as unknown as { getAbsoluteTransform?: () => unknown }
+    ).getAbsoluteTransform?.();
+    if (
+      trRaw &&
+      typeof trRaw === "object" &&
+      trRaw !== null &&
+      "point" in trRaw &&
+      typeof (trRaw as { point?: unknown }).point === "function"
+    ) {
+      const tr = trRaw as { point: (p: Point) => Point };
       return localVerts.map((v: Point) => tr.point(v));
     }
 
     const cx =
-      typeof (node as any).x === "function"
-        ? (node as any).x()
-        : (node as any).x ?? 0;
+      typeof (node as unknown as { x?: unknown }).x === "function"
+        ? (node as unknown as { x: () => number }).x()
+        : (node as unknown as { x?: number }).x ?? 0;
     const cy =
-      typeof (node as any).y === "function"
-        ? (node as any).y()
-        : (node as any).y ?? 0;
+      typeof (node as unknown as { y?: unknown }).y === "function"
+        ? (node as unknown as { y: () => number }).y()
+        : (node as unknown as { y?: number }).y ?? 0;
     return localVerts.map((v: Point) => ({ x: cx + v.x, y: cy + v.y }));
   }
 
-  if (node.getClassName() === "Line") {
-    const line = node as Konva.Line;
-    const pts = line.points();
-    if (!Array.isArray(pts) || pts.length < 4) return [];
-    const half = pts[2] / 2;
-    const localVerts = [
-      { x: -half, y: 0 },
-      { x: half, y: 0 },
-    ];
-    if (opts?.local) return localVerts;
-    const tr = (node as any).getAbsoluteTransform?.();
-    if (tr && typeof tr.point === "function") {
-      return localVerts.map((v: Point) => tr.point(v));
-    }
-    const cx =
-      typeof (node as any).x === "function"
-        ? (node as any).x()
-        : (node as any).x ?? 0;
-    const cy =
-      typeof (node as any).y === "function"
-        ? (node as any).y()
-        : (node as any).y ?? 0;
-    return localVerts.map((v: Point) => ({ x: cx + v.x, y: cy + v.y }));
-  }
-
-  const n = node as any;
+  const n = node as unknown as {
+    sides?: number | (() => number);
+    radius?: number | (() => number);
+    rotation?: number | (() => number);
+    attrs?: Record<string, unknown>;
+    getAbsoluteTransform?: () => unknown;
+    x?: number | (() => number);
+    y?: number | (() => number);
+  };
   const sidesRaw = n.sides ?? n.attrs?.sides;
-  let sides =
+  const sides =
     typeof sidesRaw === "function"
       ? sidesRaw.call(node)
       : Number(sidesRaw) || 0;
   const radiusRaw = n.radius ?? n.attrs?.radius;
-  let radius =
+  const radius =
     typeof radiusRaw === "function"
       ? radiusRaw.call(node)
       : Number(radiusRaw) || 0;
@@ -107,9 +103,16 @@ export function polygonVertices(
 
   if (opts?.local) return vertsLocal;
 
-  const tr = n.getAbsoluteTransform?.();
-  if (tr && typeof tr.point === "function") {
-    return vertsLocal.map((v: Point) => tr.point(v));
+  const trRaw2 = n.getAbsoluteTransform?.();
+  if (
+    trRaw2 &&
+    typeof trRaw2 === "object" &&
+    trRaw2 !== null &&
+    "point" in trRaw2 &&
+    typeof (trRaw2 as { point?: unknown }).point === "function"
+  ) {
+    const tr2 = trRaw2 as { point: (p: Point) => Point };
+    return vertsLocal.map((v: Point) => tr2.point(v));
   }
 
   const cx = typeof n.x === "function" ? n.x() : n.x ?? 0;

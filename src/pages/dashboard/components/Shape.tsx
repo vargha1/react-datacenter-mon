@@ -35,6 +35,9 @@ export const ShapeComponent = React.forwardRef<
           width={shape.width ?? 120}
           height={shape.height ?? 80}
           fill={shape.fill}
+          strokeEnabled={true}
+          stroke="#000"
+          strokeWidth={shape.strokeWidth ?? 2}
           onDragMove={(e) => {
             const evt = (e.evt as MouseEvent) ?? null;
             if (evt?.shiftKey) {
@@ -71,7 +74,7 @@ export const ShapeComponent = React.forwardRef<
           x={(shape.x ?? 0) + (shape.width ?? 120) / 2}
           y={(shape.y ?? 0) + (shape.height ?? 80) / 2}
           text={shape.name ?? (shape.id ? shape.id.slice(0, 6) : "")}
-          fontSize={12}
+          fontSize={shape.fontSize ?? 12}
           fill="#111"
           ref={(node) => {
             if (node) {
@@ -80,7 +83,9 @@ export const ShapeComponent = React.forwardRef<
                 const h = node.height() ?? 0;
                 node.offsetX(w / 2);
                 node.offsetY(h / 2);
-              } catch (e) {}
+              } catch (err) {
+                void err;
+              }
             }
           }}
         />
@@ -96,6 +101,9 @@ export const ShapeComponent = React.forwardRef<
           ref={ref as React.RefObject<Konva.Circle>}
           radius={shape.radius ?? 50}
           fill={shape.fill}
+          strokeEnabled={true}
+          stroke="#000"
+          strokeWidth={shape.strokeWidth ?? 2}
           onDragMove={(e) => {
             const evt = (e.evt as MouseEvent) ?? null;
             if (evt?.shiftKey) {
@@ -129,7 +137,7 @@ export const ShapeComponent = React.forwardRef<
           x={shape.x ?? 0}
           y={shape.y ?? 0}
           text={shape.name ?? (shape.id ? shape.id.slice(0, 6) : "")}
-          fontSize={12}
+          fontSize={shape.fontSize ?? 12}
           fill="#111"
           ref={(node) => {
             if (node) {
@@ -138,7 +146,9 @@ export const ShapeComponent = React.forwardRef<
                 const h = node.height() ?? 0;
                 node.offsetX(w / 2);
                 node.offsetY(h / 2);
-              } catch (e) {}
+              } catch (err) {
+                void err;
+              }
             }
           }}
         />
@@ -155,8 +165,9 @@ export const ShapeComponent = React.forwardRef<
           sides={3}
           radius={shape.radius ?? 70}
           fill={shape.fill}
-          stroke={shape.fill}
-          strokeWidth={2}
+          strokeEnabled={true}
+          stroke="#000"
+          strokeWidth={shape.strokeWidth ?? 2}
           onDragMove={(e) => {
             const evt = (e.evt as MouseEvent) ?? null;
             if (evt?.shiftKey) {
@@ -190,7 +201,7 @@ export const ShapeComponent = React.forwardRef<
           x={shape.x ?? 0}
           y={shape.y ?? 0}
           text={shape.name ?? (shape.id ? shape.id.slice(0, 6) : "")}
-          fontSize={12}
+          fontSize={shape.fontSize ?? 12}
           fill="#111"
           ref={(node) => {
             if (node) {
@@ -199,7 +210,9 @@ export const ShapeComponent = React.forwardRef<
                 const h = node.height() ?? 0;
                 node.offsetX(w / 2);
                 node.offsetY(h / 2);
-              } catch (e) {}
+              } catch (err) {
+                void err;
+              }
             }
           }}
         />
@@ -216,8 +229,9 @@ export const ShapeComponent = React.forwardRef<
           points={shape.points}
           closed={true}
           fill={shape.fill}
-          stroke={shape.fill}
-          strokeWidth={2}
+          strokeEnabled={true}
+          stroke="#000"
+          strokeWidth={shape.strokeWidth ?? 2}
           onDragMove={(e) => {
             const evt = (e.evt as MouseEvent) ?? null;
             if (evt?.shiftKey) {
@@ -259,7 +273,7 @@ export const ShapeComponent = React.forwardRef<
           x={shape.x ?? 0}
           y={shape.y ?? 0}
           text={shape.name ?? (shape.id ? shape.id.slice(0, 6) : "")}
-          fontSize={12}
+          fontSize={shape.fontSize ?? 12}
           fill="#111"
           ref={(node) => {
             if (node) {
@@ -268,7 +282,9 @@ export const ShapeComponent = React.forwardRef<
                 const h = node.height() ?? 0;
                 node.offsetX(w / 2);
                 node.offsetY(h / 2);
-              } catch (e) {}
+              } catch (err) {
+                void err;
+              }
             }
           }}
         />
@@ -301,8 +317,8 @@ export const ShapeComponent = React.forwardRef<
         <Line
           id={shape.id}
           points={[p1.x, p1.y, p2.x, p2.y]}
-          stroke={shape.fill}
-          strokeWidth={4}
+          stroke={"#000"}
+          strokeWidth={shape.strokeWidth ?? 4}
           lineCap="round"
           hitStrokeWidth={12}
           perfectDrawEnabled={false}
@@ -333,8 +349,8 @@ export const ShapeComponent = React.forwardRef<
         <Circle
           x={p1.x}
           y={p1.y}
-          radius={8}
-          fill={shape.fill}
+          radius={6}
+          fill={"#000"}
           opacity={0.8}
           draggable
           hitStrokeWidth={20}
@@ -358,8 +374,8 @@ export const ShapeComponent = React.forwardRef<
         <Circle
           x={p2.x}
           y={p2.y}
-          radius={8}
-          fill={shape.fill}
+          radius={6}
+          fill={"#000"}
           opacity={0.8}
           draggable
           hitStrokeWidth={20}

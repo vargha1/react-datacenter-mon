@@ -25,6 +25,7 @@ export const ConnectionLine: React.FC<{
 
   return (
     <Line
+      id={connection.id}
       key={connection.id}
       points={points}
       stroke={stroke}

@@ -42,6 +42,10 @@ export interface Shape {
   x: number;
   y: number;
   fill: string;
+  // optional font size (used by the properties panel display or text rendering)
+  fontSize?: number;
+  // optional stroke width for the shape outline
+  strokeWidth?: number;
   width?: number;
   height?: number;
   radius?: number;

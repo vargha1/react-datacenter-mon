@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Stage, Layer, Line, Transformer } from "react-konva";
 import Konva from "konva";
 import type {
@@ -14,12 +14,12 @@ import { Header } from "./Header";
 import { ShapeComponent } from "./Shape";
 import { ConnectionLine } from "./Connection";
 import { Circle as KonvaCircle } from "react-konva";
-import { distance } from "../utils/helpers";
+import { distance, snapDeltaTo8 } from "../utils/helpers";
 
 /* ---------- Main Component ---------- */
 const STROKE = "#222";
 const STROKE_WIDTH = 2;
-const CLAMP_MARGIN = 20;
+const CLAMP_MARGIN = 12;
 
 export const Main: React.FC = () => {
   const [size, setSize] = useState({
@@ -35,7 +35,7 @@ export const Main: React.FC = () => {
       type: "rect",
       x: 100,
       y: 150,
-      fill: "#f66",
+      fill: "",
       width: 120,
       height: 80,
     },
@@ -45,7 +45,7 @@ export const Main: React.FC = () => {
       type: "circle",
       x: 400,
       y: 200,
-      fill: "#6f6",
+      fill: "",
       radius: 50,
     },
     {
@@ -54,11 +54,13 @@ export const Main: React.FC = () => {
       type: "triangle",
       x: 700,
       y: 200,
-      fill: "#66f",
+      fill: "",
       radius: 70,
     },
   ]);
   const [connections, setConnections] = useState<Connection[]>([]);
+  // persistence key
+  const STORAGE_KEY = "circuit-designer-state";
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawingFrom, setDrawingFrom] = useState<AnchorDescriptor | null>(null);
   const [intermediatePoints, setIntermediatePoints] = useState<
@@ -74,6 +76,7 @@ export const Main: React.FC = () => {
 
   // Panning refs
   const spacePressedRef = useRef(false);
+  const shiftPressedRef = useRef(false);
   const isPanningRef = useRef(false);
   const panStartRef = useRef<Point | null>(null);
   const panStageStartRef = useRef<Point>({ x: 0, y: 0 });
@@ -92,7 +95,7 @@ export const Main: React.FC = () => {
     Array<{ shapes: Shape[]; connections: Connection[] }>
   >([]);
 
-  const pushHistory = () => {
+  const pushHistory = useCallback(() => {
     historyRef.current.push({
       shapes: JSON.parse(JSON.stringify(shapes)),
       connections: JSON.parse(JSON.stringify(connections)),
@@ -101,9 +104,122 @@ export const Main: React.FC = () => {
     if (historyRef.current.length > 100) historyRef.current.shift();
     // clear redo stack
     futureRef.current = [];
-  };
+  }, [shapes, connections]);
 
-  const undo = () => {
+  // Load persisted state on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw) as {
+        shapes?: Shape[];
+        connections?: Connection[];
+        stage?: { x?: number; y?: number; scale?: number };
+      } | null;
+      if (!data) return;
+      if (Array.isArray(data.shapes)) setShapes(data.shapes);
+      if (Array.isArray(data.connections)) setConnections(data.connections);
+      // restore stage transform if present
+      if (data.stage && stageRef.current) {
+        try {
+          const st = stageRef.current;
+          const s = data.stage.scale ?? undefined;
+          if (typeof s === "number") {
+            st.scale({ x: s, y: s });
+            setScale(s);
+          }
+          if (
+            typeof data.stage.x === "number" &&
+            typeof data.stage.y === "number"
+          ) {
+            st.position({ x: data.stage.x, y: data.stage.y });
+          }
+          st.batchDraw();
+        } catch (err) {
+          void err;
+        }
+      }
+    } catch (err) {
+      void err;
+    }
+  }, []);
+
+  // Save state on changes (debounced)
+  useEffect(() => {
+    let t: number | null = null;
+    const save = () => {
+      try {
+        const st = stageRef.current;
+        const stage = st
+          ? { x: st.x() ?? 0, y: st.y() ?? 0, scale: st.scaleX() ?? 1 }
+          : undefined;
+        const payload = JSON.stringify({ shapes, connections, stage });
+        localStorage.setItem(STORAGE_KEY, payload);
+      } catch (err) {
+        void err;
+      }
+    };
+    // small debounce
+    t = window.setTimeout(save, 200);
+    return () => {
+      if (t) window.clearTimeout(t);
+    };
+  }, [shapes, connections]);
+
+  const resetAll = useCallback(() => {
+    pushHistory();
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (err) {
+      void err;
+    }
+    // restore default starter shapes
+    setShapes([
+      {
+        id: crypto.randomUUID(),
+        name: "rectangle 1",
+        type: "rect",
+        x: 100,
+        y: 150,
+        fill: "",
+        width: 120,
+        height: 80,
+      },
+      {
+        id: crypto.randomUUID(),
+        name: "circle 1",
+        type: "circle",
+        x: 400,
+        y: 200,
+        fill: "",
+        radius: 50,
+      },
+      {
+        id: crypto.randomUUID(),
+        name: "triangle 1",
+        type: "triangle",
+        x: 700,
+        y: 200,
+        fill: "",
+        radius: 70,
+      },
+    ]);
+    setConnections([]);
+    // reset stage transform
+    try {
+      const st = stageRef.current;
+      if (st) {
+        st.scale({ x: 1, y: 1 });
+        st.position({ x: 0, y: 0 });
+        st.batchDraw();
+        setScale(1);
+      }
+    } catch (err) {
+      void err;
+    }
+  }, [pushHistory]);
+
+  const undo = useCallback(() => {
     if (historyRef.current.length === 0) return;
 
     // If current state contains an auto-generated polygon, suppress the
@@ -124,9 +240,9 @@ export const Main: React.FC = () => {
     // allow other effects to run again shortly after
     if (hasGenerated)
       setTimeout(() => (suppressAutoFormRef.current = false), 50);
-  };
+  }, [shapes, connections]);
 
-  const redo = () => {
+  const redo = useCallback(() => {
     if (futureRef.current.length === 0) return;
     const next = futureRef.current.pop()!;
     historyRef.current.push({
@@ -135,7 +251,7 @@ export const Main: React.FC = () => {
     });
     setShapes(next.shapes);
     setConnections(next.connections);
-  };
+  }, [shapes, connections]);
 
   const SNAP_THRESHOLD = 15; // pixels
 
@@ -144,7 +260,7 @@ export const Main: React.FC = () => {
       setSize({ w: window.innerWidth, h: window.innerHeight - 108 });
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, []);
+  }, [pushHistory]);
 
   useEffect(() => {
     if (selectedId && transformerRef.current) {
@@ -157,7 +273,7 @@ export const Main: React.FC = () => {
           transformerRef.current.enabledAnchors([
             "middle-left",
             "middle-right",
-          ] as any);
+          ] as unknown as string[]);
         } else {
           transformerRef.current.enabledAnchors([
             "top-left",
@@ -168,12 +284,12 @@ export const Main: React.FC = () => {
             "bottom-center",
             "bottom-left",
             "middle-left",
-          ] as any);
+          ] as unknown as string[]);
         }
         transformerRef.current.getLayer()?.batchDraw();
       }
     }
-  }, [selectedId]);
+  }, [selectedId, shapes]);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -189,6 +305,14 @@ export const Main: React.FC = () => {
             )
           );
           setSelectedId(null);
+        }
+      }
+      // Cancel drawing with Escape
+      if (e.key === "Escape") {
+        if (isDrawing) {
+          setIsDrawing(false);
+          setDrawingFrom(null);
+          setIntermediatePoints([]);
         }
       }
       // Undo/Redo: Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z
@@ -208,7 +332,7 @@ export const Main: React.FC = () => {
           pushHistory();
           const copy = {
             ...clipboardRef.current,
-            id: `shape-${Date.now()}`,
+            id: crypto.randomUUID(),
             x: (clipboardRef.current.x || 200) + 20,
             y: (clipboardRef.current.y || 200) + 20,
           } as Shape;
@@ -219,6 +343,8 @@ export const Main: React.FC = () => {
 
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.code === "Space") spacePressedRef.current = false;
+      // keep track of shift release as well
+      if (e.key === "Shift") shiftPressedRef.current = false;
     };
 
     if (selectedId && transformerRef.current) {
@@ -252,6 +378,8 @@ export const Main: React.FC = () => {
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === "Space") spacePressedRef.current = true;
+      // track shift state
+      shiftPressedRef.current = e.shiftKey;
       handleKey(e);
     };
 
@@ -261,7 +389,7 @@ export const Main: React.FC = () => {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [selectedId, shapes]);
+  }, [selectedId, shapes, pushHistory, redo, undo, isDrawing]);
 
   useEffect(() => {
     scaleRef.current = scale;
@@ -329,19 +457,150 @@ export const Main: React.FC = () => {
     };
   }, []);
 
+  // Handle native drag/drop onto the stage container to add shapes
+  useEffect(() => {
+    let mounted = true;
+    let attached = false;
+    let onDragOver: ((ev: DragEvent) => void) | null = null;
+    let onDrop: ((ev: DragEvent) => void) | null = null;
+    let attachedContainer: HTMLElement | null = null;
+    const interval = setInterval(() => {
+      if (!mounted || attached) return;
+      const stage = stageRef.current;
+      if (!stage) return;
+      const container = stage.container();
+      if (!container) return;
+
+      onDragOver = (ev: DragEvent) => {
+        ev.preventDefault();
+        try {
+          ev.dataTransfer!.dropEffect = "copy";
+        } catch (err) {
+          void err;
+        }
+      };
+
+      onDrop = (ev: DragEvent) => {
+        ev.preventDefault();
+        try {
+          let text = ev.dataTransfer?.getData("application/json");
+          if (!text) {
+            text = ev.dataTransfer?.getData("text/plain") || "";
+          }
+          if (!text) return;
+          const payload = JSON.parse(text) as { type?: string } | null;
+          if (!payload || !payload.type) return;
+
+          const rect = container.getBoundingClientRect();
+          const x = ev.clientX - rect.left;
+          const y = ev.clientY - rect.top;
+
+          const layer = layerRef.current;
+          let local = { x, y };
+          if (layer) {
+            const layerTrRaw = (
+              layer as unknown as { getAbsoluteTransform?: () => unknown }
+            ).getAbsoluteTransform?.();
+            if (
+              layerTrRaw &&
+              typeof layerTrRaw === "object" &&
+              layerTrRaw !== null &&
+              "copy" in layerTrRaw &&
+              typeof (layerTrRaw as { copy?: unknown }).copy === "function"
+            ) {
+              try {
+                const layerTr = layerTrRaw as {
+                  copy: () => { invert: () => { point?: (p: Point) => Point } };
+                };
+                const inv = layerTr.copy().invert();
+                if (typeof (inv as { point?: unknown }).point === "function")
+                  local = (inv as { point: (p: Point) => Point }).point({
+                    x,
+                    y,
+                  });
+              } catch (err) {
+                void err;
+                local = { x, y };
+              }
+            }
+          }
+
+          const colors = ["#f66", "#6f6", "#66f", "#ff6", "#f6f", "#6ff"];
+          const randomColor = colors[Math.floor(Math.random() * colors.length)];
+          type Payload = {
+            type?: string;
+            fill?: string;
+            shapeProps?: Partial<Shape>;
+          };
+          const p = payload as Payload | null;
+          const type = (p?.type as Shape["type"]) ?? ("rect" as Shape["type"]);
+          const fill = p?.fill || randomColor;
+          const shapePropsFromPayload = p?.shapeProps || {};
+          const newShape: Shape = {
+            id:
+              typeof crypto !== "undefined" &&
+              typeof (crypto as unknown as { randomUUID?: () => string })
+                .randomUUID === "function"
+                ? (crypto as unknown as { randomUUID?: () => string })
+                    .randomUUID!()
+                : `shape-${Date.now()}`,
+            type,
+            x: local.x,
+            y: local.y,
+            fill: fill,
+            name:
+              shapePropsFromPayload.name ||
+              type + " " + Math.floor(Math.random() * 1000),
+            ...((type === "rect" && { width: 120, height: 80 }) || {}),
+            ...((type === "circle" && { radius: 50 }) || {}),
+            ...((type === "triangle" && { radius: 70 }) || {}),
+            ...((type === "line" && { radius: 100 }) || {}),
+            ...shapePropsFromPayload,
+          } as Shape;
+
+          pushHistory();
+          setShapes((prev) => [...prev, newShape]);
+        } catch (err) {
+          void err;
+          // ignore malformed payloads
+        }
+      };
+
+      container.addEventListener("dragover", onDragOver!);
+      container.addEventListener("drop", onDrop!);
+      attached = true;
+      attachedContainer = container;
+    }, 100);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+      try {
+        if (attachedContainer) {
+          if (onDragOver)
+            attachedContainer.removeEventListener("dragover", onDragOver);
+          if (onDrop) attachedContainer.removeEventListener("drop", onDrop);
+        }
+      } catch (err) {
+        void err;
+      }
+    };
+  }, [pushHistory]);
+
   const addShape = (type: Shape["type"]) => {
-    const colors = ["#f66", "#6f6", "#66f", "#ff6", "#f6f", "#6ff"];
-    const randomColor = colors[Math.floor(Math.random() * colors.length)];
+    // const colors = ["#f66", "#6f6", "#66f", "#ff6", "#f6f", "#6ff"];
+    // const randomColor = colors[Math.floor(Math.random() * colors.length)];
     const newShape: Shape = {
       id:
         typeof crypto !== "undefined" &&
-        typeof (crypto as any).randomUUID === "function"
-          ? (crypto as any).randomUUID()
+        typeof (crypto as unknown as { randomUUID?: () => string })
+          .randomUUID === "function"
+          ? (crypto as unknown as { randomUUID?: () => string }).randomUUID!()
           : `shape-${Date.now()}`,
       type,
       x: 200 + Math.random() * 300,
       y: 200 + Math.random() * 200,
-      fill: randomColor,
+      fill: "",
       name: type + " " + Math.floor(Math.random() * 1000),
       ...(type === "rect" && { width: 120, height: 80 }),
       ...(type === "circle" && { radius: 50 }),
@@ -360,9 +619,15 @@ export const Main: React.FC = () => {
       const cls = node.getClassName();
       if (!["Rect", "Circle", "RegularPolygon", "Line"].includes(cls)) continue;
       // ignore nodes that do not have an id or are not in our shapes state
-      const nid = typeof node.id === "function" ? node.id() : (node as any).id;
+      const nid =
+        typeof node.id === "function"
+          ? node.id()
+          : (node as unknown as { id?: string }).id;
       if (!nid) continue;
-      if (!shapes.some((s) => s.id === nid)) continue;
+      // allow both shapes and connections to be valid targets
+      const isShape = shapes.some((s) => s.id === nid);
+      const isConnection = connections.some((c) => c.id === nid);
+      if (!isShape && !isConnection) continue;
 
       const r = node.getClientRect();
       const box = {
@@ -423,12 +688,25 @@ export const Main: React.FC = () => {
         const layer = layerRef.current;
         let local = { x: pos.x, y: pos.y };
         if (layer) {
-          const layerTr = (layer as any).getAbsoluteTransform?.();
-          if (layerTr && typeof layerTr.copy === "function") {
+          const layerTrRaw = (
+            layer as unknown as { getAbsoluteTransform?: () => unknown }
+          ).getAbsoluteTransform?.();
+          if (
+            layerTrRaw &&
+            typeof layerTrRaw === "object" &&
+            layerTrRaw !== null &&
+            "copy" in layerTrRaw &&
+            typeof (layerTrRaw as { copy?: unknown }).copy === "function"
+          ) {
             try {
+              const layerTr = layerTrRaw as {
+                copy: () => { invert: () => { point?: (p: Point) => Point } };
+              };
               const inv = layerTr.copy().invert();
-              if (typeof inv.point === "function") local = inv.point(pos);
-            } catch (e) {
+              if (typeof (inv as { point?: unknown }).point === "function")
+                local = (inv as { point: (p: Point) => Point }).point(pos);
+            } catch (err) {
+              void err;
               local = { x: pos.x, y: pos.y };
             }
           }
@@ -449,14 +727,47 @@ export const Main: React.FC = () => {
     const layer = layerRef.current;
     let local = { x: p.x, y: p.y };
     if (layer) {
-      const layerTr = (layer as any).getAbsoluteTransform?.();
-      if (layerTr && typeof layerTr.copy === "function") {
+      const layerTrRaw = (
+        layer as unknown as { getAbsoluteTransform?: () => unknown }
+      ).getAbsoluteTransform?.();
+      if (
+        layerTrRaw &&
+        typeof layerTrRaw === "object" &&
+        layerTrRaw !== null &&
+        "copy" in layerTrRaw &&
+        typeof (layerTrRaw as { copy?: unknown }).copy === "function"
+      ) {
         try {
+          const layerTr = layerTrRaw as {
+            copy: () => { invert: () => { point?: (p: Point) => Point } };
+          };
           const inv = layerTr.copy().invert();
-          if (typeof inv.point === "function") local = inv.point(p);
-        } catch (e) {
+          if (typeof (inv as { point?: unknown }).point === "function")
+            local = (inv as { point: (p: Point) => Point }).point(p);
+        } catch (err) {
+          void err;
           local = { x: p.x, y: p.y };
         }
+      }
+    }
+    // If drawing and shift is held, snap the preview endpoint to 8 directions
+    if (isDrawing && drawingFrom && shiftPressedRef.current) {
+      try {
+        let lastPoint = null as Point | null;
+        if (intermediatePoints.length > 0) {
+          lastPoint = intermediatePoints[intermediatePoints.length - 1];
+        } else {
+          // derive point from drawingFrom anchor
+          if (layer) lastPoint = anchorToPoint(layer, drawingFrom);
+        }
+        if (lastPoint) {
+          const dx = local.x - lastPoint.x;
+          const dy = local.y - lastPoint.y;
+          const snapped = snapDeltaTo8(dx, dy);
+          local = { x: lastPoint.x + snapped.x, y: lastPoint.y + snapped.y };
+        }
+      } catch (err) {
+        void err;
       }
     }
     setMousePos(local);
@@ -488,6 +799,37 @@ export const Main: React.FC = () => {
       stage.container().style.cursor = "default";
     }
   };
+
+  const handleStageContextMenu = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    // prevent browser context menu and cancel connection drawing if active
+    try {
+      e.evt.preventDefault();
+    } catch (err) {
+      void err;
+    }
+    if (isDrawing) {
+      setIsDrawing(false);
+      setDrawingFrom(null);
+      setIntermediatePoints([]);
+    }
+  };
+
+  useEffect(() => {
+    const onDocContext = (ev: MouseEvent) => {
+      try {
+        ev.preventDefault();
+      } catch (err) {
+        void err;
+      }
+      if (isDrawing) {
+        setIsDrawing(false);
+        setDrawingFrom(null);
+        setIntermediatePoints([]);
+      }
+    };
+    document.addEventListener("contextmenu", onDocContext);
+    return () => document.removeEventListener("contextmenu", onDocContext);
+  }, [isDrawing]);
 
   const handleStageMouseMoveForPan = () => {
     const stage = stageRef.current;
@@ -521,6 +863,60 @@ export const Main: React.FC = () => {
   };
 
   // Detect and snap line endpoints, then form shapes
+  const formShapeFromLines = useCallback(
+    (lineIds: string[], vertices: Point[]) => {
+      // Calculate centroid for positioning
+      const centroid = {
+        x: vertices.reduce((sum, v) => sum + v.x, 0) / vertices.length,
+        y: vertices.reduce((sum, v) => sum + v.y, 0) / vertices.length,
+      };
+
+      // Convert vertices to points array relative to centroid
+      const points: number[] = [];
+      vertices.forEach((v) => {
+        points.push(v.x - centroid.x);
+        points.push(v.y - centroid.y);
+      });
+
+      // const colors = ["#f66", "#6f6", "#66f", "#ff6", "#f6f", "#6ff"];
+      const newShape: Shape = {
+        id:
+          typeof crypto !== "undefined" &&
+          typeof (crypto as unknown as { randomUUID?: () => string })
+            .randomUUID === "function"
+            ? (crypto as unknown as { randomUUID?: () => string }).randomUUID!()
+            : `shape-${Date.now()}`,
+        type: "polygon",
+        x: centroid.x,
+        y: centroid.y,
+        fill: "",
+        points: points,
+        rotation: 0,
+        generatedFromLines: true,
+        name: "Polygon " + Math.floor(Math.random() * 1000),
+      };
+
+      // Update connections
+      const updatedConnections = connections.map((conn) => {
+        const newConn = { ...conn };
+        if (lineIds.includes(conn.from.shapeId)) {
+          newConn.from = { ...conn.from, shapeId: newShape.id };
+        }
+        if (lineIds.includes(conn.to.shapeId)) {
+          newConn.to = { ...conn.to, shapeId: newShape.id };
+        }
+        return newConn;
+      });
+
+      setShapes((prev) => [
+        ...prev.filter((s) => !lineIds.includes(s.id)),
+        newShape,
+      ]);
+      setConnections(updatedConnections);
+    },
+    [connections]
+  );
+
   useEffect(() => {
     if (suppressAutoFormRef.current) return;
 
@@ -550,7 +946,7 @@ export const Main: React.FC = () => {
         let snapped = false;
 
         // Check if this point snaps to an existing cluster
-        for (const [_, cluster] of endpointMap.entries()) {
+        for (const [, cluster] of endpointMap.entries()) {
           if (distance(point, cluster.point) < SNAP_THRESHOLD) {
             cluster.lineIds.push(line.id);
             snapped = true;
@@ -657,57 +1053,7 @@ export const Main: React.FC = () => {
         formShapeFromLines(Array.from(shapeLineIds), cyclePoints);
       }
     }
-  }, [shapes]);
-
-  const formShapeFromLines = (lineIds: string[], vertices: Point[]) => {
-    // Calculate centroid for positioning
-    const centroid = {
-      x: vertices.reduce((sum, v) => sum + v.x, 0) / vertices.length,
-      y: vertices.reduce((sum, v) => sum + v.y, 0) / vertices.length,
-    };
-
-    // Convert vertices to points array relative to centroid
-    const points: number[] = [];
-    vertices.forEach((v) => {
-      points.push(v.x - centroid.x);
-      points.push(v.y - centroid.y);
-    });
-
-    const colors = ["#f66", "#6f6", "#66f", "#ff6", "#f6f", "#6ff"];
-    const newShape: Shape = {
-      id:
-        typeof crypto !== "undefined" &&
-        typeof (crypto as any).randomUUID === "function"
-          ? (crypto as any).randomUUID()
-          : `shape-${Date.now()}`,
-      type: "polygon",
-      x: centroid.x,
-      y: centroid.y,
-      fill: colors[Math.floor(Math.random() * colors.length)],
-      points: points,
-      rotation: 0,
-      generatedFromLines: true,
-      name: "Polygon " + Math.floor(Math.random() * 1000),
-    };
-
-    // Update connections
-    const updatedConnections = connections.map((conn) => {
-      let newConn = { ...conn };
-      if (lineIds.includes(conn.from.shapeId)) {
-        newConn.from = { ...conn.from, shapeId: newShape.id };
-      }
-      if (lineIds.includes(conn.to.shapeId)) {
-        newConn.to = { ...conn.to, shapeId: newShape.id };
-      }
-      return newConn;
-    });
-
-    setShapes((prev) => [
-      ...prev.filter((s) => !lineIds.includes(s.id)),
-      newShape,
-    ]);
-    setConnections(updatedConnections);
-  };
+  }, [shapes, formShapeFromLines, pushHistory]);
 
   // Properties panel handler: update name for selected shape
   const updateSelectedShapeName = (name: string) => {
@@ -762,7 +1108,8 @@ export const Main: React.FC = () => {
         st.position(prevPos);
         st.batchDraw();
       });
-    } catch (e) {
+    } catch (err) {
+      void err;
       // fallback: try to capture current view
       const dataUrl = st.toDataURL({
         pixelRatio: window.devicePixelRatio || 2,
@@ -782,6 +1129,8 @@ export const Main: React.FC = () => {
         onAddShape={addShape}
         onScreenshotCurrent={screenshotCurrent}
         onScreenshotFull={screenshotFull}
+        stageRef={stageRef}
+        onReset={resetAll}
       />
       <div className="mt-16">
         <Stage
@@ -791,6 +1140,7 @@ export const Main: React.FC = () => {
           onClick={handleClick}
           onMouseDown={handleStageMouseDown}
           onMouseUp={handleStageMouseUp}
+          onContextMenu={handleStageContextMenu}
           onMouseMove={() => {
             // first handle panning if active
             handleStageMouseMoveForPan();
@@ -874,7 +1224,7 @@ export const Main: React.FC = () => {
                 );
               })()}
             {/* debug visual for computed 'from' anchor */}
-            {(window as any).__ANCHOR_DEBUG__ &&
+            {(window as unknown as Record<string, unknown>).__ANCHOR_DEBUG__ &&
               isDrawing &&
               drawingFrom &&
               layerRef.current &&
@@ -886,36 +1236,84 @@ export const Main: React.FC = () => {
         </Stage>
       </div>
       {/* Properties panel for selected shape */}
-      {selectedId && (
-        <div className="absolute right-4 top-20 bg-white border rounded p-3 shadow z-20 w-64">
-          <h3 className="font-bold text-sm mb-2">Properties</h3>
-          {(() => {
-            const s = shapes.find((sh) => sh.id === selectedId);
-            if (!s) return <div>Not found</div>;
-            return (
-              <div className="text-sm">
-                <div className="mb-2">
-                  <div className="text-xs text-gray-500">ID</div>
-                  <div className="break-words text-xs">{s.id}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-gray-500">Name</div>
+      {(() => {
+        const selectedShape = selectedId
+          ? shapes.find((sh) => sh.id === selectedId) ?? null
+          : null;
+        if (!selectedShape) return null;
+        const fontSizeStyle = selectedShape.fontSize
+          ? { fontSize: `${selectedShape.fontSize}px` }
+          : undefined;
+        return (
+          <div
+            style={fontSizeStyle}
+            className="absolute right-4 top-20 bg-white border rounded p-3 shadow z-20 w-64"
+          >
+            <h3 className="font-bold text-sm mb-2">Properties</h3>
+            <div className="text-sm">
+              <div className="mb-2">
+                <div className="text-xs text-gray-500">ID</div>
+                <div className="break-words text-xs">{selectedShape.id}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">Name</div>
+                <input
+                  className="w-full border rounded px-2 py-1 text-sm"
+                  value={selectedShape.name ?? ""}
+                  onChange={(e) => updateSelectedShapeName(e.target.value)}
+                />
+              </div>
+              <div className="mt-2">
+                <div className="text-xs text-gray-500">Font size</div>
+                <input
+                  type="number"
+                  min={0}
+                  max={72}
+                  className="w-full border rounded px-2 py-1 text-sm"
+                  value={selectedShape.fontSize ?? 14}
+                  onChange={(e) => {
+                    const v = Number(e.target.value) || 14;
+                    if (v < 0 || v > 72) return;
+                    pushHistory();
+                    setShapes((prev) =>
+                      prev.map((sh) =>
+                        sh.id === selectedId ? { ...sh, fontSize: v } : sh
+                      )
+                    );
+                  }}
+                />
+                <div className="mt-2">
+                  <div className="text-xs text-gray-500">Stroke width</div>
                   <input
+                    type="number"
+                    min={0}
+                    max={20}
+                    step={1}
                     className="w-full border rounded px-2 py-1 text-sm"
-                    value={s.name ?? ""}
-                    onChange={(e) => updateSelectedShapeName(e.target.value)}
+                    value={selectedShape.strokeWidth ?? 2}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      if (Number.isNaN(v)) return;
+                      if (v < 0 || v > 20) return;
+                      pushHistory();
+                      setShapes((prev) =>
+                        prev.map((sh) =>
+                          sh.id === selectedId ? { ...sh, strokeWidth: v } : sh
+                        )
+                      );
+                    }}
                   />
                 </div>
-                {s.generatedFromLines && (
-                  <div className="mt-2 text-xs text-gray-600">
-                    Generated from lines
-                  </div>
-                )}
               </div>
-            );
-          })()}
-        </div>
-      )}
+              {selectedShape.generatedFromLines && (
+                <div className="mt-2 text-xs text-gray-600">
+                  Generated from lines
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
