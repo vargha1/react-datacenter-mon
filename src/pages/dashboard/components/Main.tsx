@@ -150,11 +150,13 @@ export const Main: React.FC = () => {
     const save = () => {
       try {
         const st = stageRef.current;
-        const stage = st
-          ? { x: st.x() ?? 0, y: st.y() ?? 0, scale: st.scaleX() ?? 1 }
-          : undefined;
-        const payload = JSON.stringify({ shapes, connections, stage });
-        localStorage.setItem(STORAGE_KEY, payload);
+        if(st?.scaleX() || st?.x() || st?.y()){
+          const stage = st
+            ? { x: st.x() ?? 0, y: st.y() ?? 0, scale: st.scaleX() ?? 1 }
+            : undefined;
+          const payload = JSON.stringify({ shapes, connections, stage });
+          localStorage.setItem(STORAGE_KEY, payload);
+        }
       } catch (err) {
         void err;
       }
@@ -164,10 +166,14 @@ export const Main: React.FC = () => {
     return () => {
       if (t) window.clearTimeout(t);
     };
-  }, [shapes, connections]);
+  }, [shapes, connections, stageRef.current?.scaleX(), stageRef.current?.x(), stageRef.current?.y()]);
 
   const resetAll = useCallback(() => {
     pushHistory();
+    historyRef.current = [];
+    futureRef.current = [];
+    // clear localStorage
+    
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch (err) {
