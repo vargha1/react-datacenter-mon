@@ -1,7 +1,7 @@
 import { BrowserRouter, Route, Routes, useNavigate } from "react-router";
 import Main from "./layout/Main";
 import { useEffect } from "react";
-import { Dashboard } from "./pages/dashboard/Dashboard";
+import Dashboard from "./pages/dashboard/page";
 
 function RedirectToDashboard() {
   const navigate = useNavigate();

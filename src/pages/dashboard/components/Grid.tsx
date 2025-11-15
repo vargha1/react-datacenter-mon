@@ -1,8 +1,14 @@
+import React from "react";
 import { Line } from "react-konva";
 
-/* ---------- Grid Component ---------- */
 const GRID_SIZE = 20;
-export const GridBackground: React.FC<{ width: number; height: number }> = ({
+
+interface GridBackgroundProps {
+  width: number;
+  height: number;
+}
+
+export const GridBackground: React.FC<GridBackgroundProps> = ({
   width,
   height,
 }) => {

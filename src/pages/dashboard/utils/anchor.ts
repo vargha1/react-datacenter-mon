@@ -2,7 +2,6 @@ import type Konva from "konva";
 import type { AnchorDescriptor, Point, RectSide } from "../../../types";
 import { distance, polygonVertices, projectPointToSegment } from "./helpers";
 
-/* ---------- Anchor utils ---------- */
 export function createAnchor(
   shape: Konva.Node,
   px: number,
@@ -17,7 +16,6 @@ export function createAnchor(
       ? shape.getClassName()
       : (shape as unknown as { className?: string }).className ?? "";
 
-  // Convert stage coordinates into node-local coordinates using the inverse of absolute transform
   let localP: { x: number; y: number } = { x: px, y: py };
   const trRaw = (
     shape as unknown as { getAbsoluteTransform?: () => unknown }
@@ -40,8 +38,7 @@ export function createAnchor(
           y: py,
         });
     } catch (e) {
-      void e; // Fix unused catch variable
-      // fallback to using stage coords if invert fails
+      void e;
       localP = { x: px, y: py };
     }
   }
@@ -89,14 +86,12 @@ export function createAnchor(
       side: best.side,
       t: best.t,
     } as AnchorDescriptor;
-    // debug
     if ((window as unknown as Record<string, unknown>).__ANCHOR_DEBUG__)
       console.debug("createAnchor rect", { shapeId, px, py, localP, anchor });
     return anchor;
   }
 
   if (type === "Circle") {
-    // localP is measured relative to the circle's local origin
     const angle = Math.atan2(localP.y, localP.x);
     const anchor = { shapeId, kind: "circle", angle } as AnchorDescriptor;
     if ((window as unknown as Record<string, unknown>).__ANCHOR_DEBUG__)
@@ -105,12 +100,6 @@ export function createAnchor(
   }
 
   if (type === "RegularPolygon" || type === "Line") {
-    // For polygons and lines, compute vertices in stage space and project the
-    // provided stage point (px,py) onto the nearest segment. Using stage
-    // coordinates avoids assumptions about whether the node's points are
-    // stored as local or absolute coordinates (lines in this app store
-    // absolute points), which could otherwise produce incorrect anchors at
-    // (0,0).
     const vertsStage = polygonVertices(shape);
     let best = { edgeIndex: 0, t: 0, d: Infinity };
     vertsStage.forEach((v, i) => {

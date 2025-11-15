@@ -4,15 +4,17 @@ import type { Point, Shape } from "../../../types";
 import type Konva from "konva";
 import { snapDeltaTo8 } from "../utils/helpers";
 
+interface ShapeComponentProps {
+  shape: Shape;
+  isSelected: boolean;
+  onSelect: () => void;
+  onDragMove: () => void;
+  onDragEnd?: (newProps: Partial<Shape>) => void;
+}
+
 export const ShapeComponent = React.forwardRef<
   Konva.Node | null,
-  {
-    shape: Shape;
-    isSelected: boolean;
-    onSelect: () => void;
-    onDragMove: () => void;
-    onDragEnd?: (newProps: Partial<Shape>) => void;
-  }
+  ShapeComponentProps
 >(({ shape, onSelect, onDragMove, onDragEnd }, ref) => {
   const commonProps = {
     id: shape.id,
@@ -69,12 +71,11 @@ export const ShapeComponent = React.forwardRef<
           }}
         />
 
-        {/* center label in rect: Rect x/y is top-left so compute center */}
         <Text
           x={(shape.x ?? 0) + (shape.width ?? 120) / 2}
           y={(shape.y ?? 0) + (shape.height ?? 80) / 2}
           text={shape.name ?? (shape.id ? shape.id.slice(0, 6) : "")}
-          fontSize={shape.fontSize ?? 12}
+          fontSize={shape.fontSize ?? 14}
           fill="#111"
           ref={(node) => {
             if (node) {
@@ -137,7 +138,7 @@ export const ShapeComponent = React.forwardRef<
           x={shape.x ?? 0}
           y={shape.y ?? 0}
           text={shape.name ?? (shape.id ? shape.id.slice(0, 6) : "")}
-          fontSize={shape.fontSize ?? 12}
+          fontSize={shape.fontSize ?? 14}
           fill="#111"
           ref={(node) => {
             if (node) {
@@ -201,7 +202,7 @@ export const ShapeComponent = React.forwardRef<
           x={shape.x ?? 0}
           y={shape.y ?? 0}
           text={shape.name ?? (shape.id ? shape.id.slice(0, 6) : "")}
-          fontSize={shape.fontSize ?? 12}
+          fontSize={shape.fontSize ?? 14}
           fill="#111"
           ref={(node) => {
             if (node) {
@@ -253,7 +254,6 @@ export const ShapeComponent = React.forwardRef<
             const scaleX = node.scaleX() ?? 1;
             const scaleY = node.scaleY() ?? 1;
 
-            // Scale the points
             const oldPoints = shape.points || [];
             const newPoints = oldPoints.map((p, i) =>
               i % 2 === 0 ? p * scaleX : p * scaleY
@@ -273,7 +273,7 @@ export const ShapeComponent = React.forwardRef<
           x={shape.x ?? 0}
           y={shape.y ?? 0}
           text={shape.name ?? (shape.id ? shape.id.slice(0, 6) : "")}
-          fontSize={shape.fontSize ?? 12}
+          fontSize={shape.fontSize ?? 14}
           fill="#111"
           ref={(node) => {
             if (node) {
@@ -402,3 +402,19 @@ export const ShapeComponent = React.forwardRef<
 
   return null;
 });
+
+export type RectSide = "top" | "bottom" | "left" | "right";
+
+export type AnchorDescriptor =
+  | { shapeId: string; kind: "rect"; side: RectSide; t: number }
+  | { shapeId: string; kind: "circle"; angle: number }
+  | { shapeId: string; kind: "poly"; edgeIndex: number; t: number };
+
+export type IntermediatePoint = Point;
+
+export type Connection = {
+  id: string;
+  from: AnchorDescriptor;
+  to: AnchorDescriptor;
+  intermediatePoints: IntermediatePoint[];
+};

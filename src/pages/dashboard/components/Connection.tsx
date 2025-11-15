@@ -1,17 +1,24 @@
+import React from "react";
 import type Konva from "konva";
+import { Line } from "react-konva";
 import type { Connection } from "../../../types";
 import { anchorToPoint } from "../utils/anchor";
-import { Line } from "react-konva";
 
-/* ---------- Connection Component ---------- */
-
-export const ConnectionLine: React.FC<{
+interface ConnectionLineProps {
   connection: Connection;
   layer: Konva.Layer | null;
   stroke: string;
   strokeWidth: number;
   onRemove?: (id: string) => void;
-}> = ({ connection, layer, stroke, strokeWidth, onRemove }) => {
+}
+
+export const ConnectionLine: React.FC<ConnectionLineProps> = ({
+  connection,
+  layer,
+  stroke,
+  strokeWidth,
+  onRemove,
+}) => {
   if (!layer) return null;
 
   const from = anchorToPoint(layer, connection.from);

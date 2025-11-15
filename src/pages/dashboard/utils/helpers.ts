@@ -1,11 +1,7 @@
 import type Konva from "konva";
 import type { Point } from "../../../types";
 
-/* ---------- Geometry helpers ---------- */
-// Lightweight local interface to read properties/methods that differ
-// between Konva versions or between Node subclasses.
-
-export function distance(a: Point, b: Point) {
+export function distance(a: Point, b: Point): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
@@ -34,10 +30,6 @@ export function polygonVertices(
     const pts = line.points();
     if (!Array.isArray(pts) || pts.length < 4) return [];
 
-    // Build vertices directly from the points array (pairs). This handles
-    // both absolute-point lines (points already in stage coords) and local
-    // point lines; if an absolute transform is available we use it to map
-    // local points to stage space.
     const localVerts: Point[] = [];
     for (let i = 0; i < pts.length; i += 2) {
       localVerts.push({ x: pts[i], y: pts[i + 1] });
@@ -120,11 +112,9 @@ export function polygonVertices(
   return vertsLocal.map((v: Point) => ({ x: cx + v.x, y: cy + v.y }));
 }
 
-// Helper: snap a delta to 8 cardinal/diagonal directions when shift is held
-export function snapDeltaTo8(dx: number, dy: number) {
+export function snapDeltaTo8(dx: number, dy: number): Point {
   if (dx === 0 && dy === 0) return { x: 0, y: 0 };
   const angle = Math.atan2(dy, dx);
-  // eight directions: multiples of 45deg
   const octant = Math.round(angle / (Math.PI / 4));
   const snappedAngle = octant * (Math.PI / 4);
   const len = Math.hypot(dx, dy);
