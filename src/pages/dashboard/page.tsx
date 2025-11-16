@@ -136,6 +136,12 @@ export default function DashboardPage() {
   }, []);
 
   // Save state
+
+  // extract stage position/scale into stable values for the dependency array
+  const _stageScaleX = stageRef.current?.scaleX?.();
+  const _stageX = stageRef.current?.x?.();
+  const _stageY = stageRef.current?.y?.();
+
   useEffect(() => {
     let t: number | null = null;
     const save = () => {
@@ -156,13 +162,7 @@ export default function DashboardPage() {
     return () => {
       if (t) window.clearTimeout(t);
     };
-  }, [
-    shapes,
-    connections,
-    stageRef.current?.scaleX(),
-    stageRef.current?.x(),
-    stageRef.current?.y(),
-  ]);
+  }, [shapes, connections, _stageScaleX, _stageX, _stageY]);
 
   const resetAll = useCallback(() => {
     pushHistory();
@@ -609,6 +609,8 @@ export default function DashboardPage() {
     const pos = stage.getPointerPosition();
     if (!pos) return;
     const nearest = findNearestShape(pos);
+    const layer = layerRef.current;
+    let local = { x: pos.x, y: pos.y };
 
     if (!isDrawing) {
       if (!selectedId || !nearest || nearest.id() !== selectedId) {
@@ -636,8 +638,6 @@ export default function DashboardPage() {
         setDrawingFrom(null);
         setIntermediatePoints([]);
       } else if (!nearest) {
-        const layer = layerRef.current;
-        let local = { x: pos.x, y: pos.y };
         if (layer) {
           const layerTrRaw = (
             layer as unknown as { getAbsoluteTransform?: () => unknown }
@@ -663,9 +663,22 @@ export default function DashboardPage() {
           }
         }
         pushHistory();
-        setIntermediatePoints((prev) => [...prev, { x: local.x, y: local.y }]);
       }
     }
+
+    let lastPoint = null as Point | null;
+    if (intermediatePoints.length > 0) {
+      lastPoint = intermediatePoints[intermediatePoints.length - 1];
+    } else {
+      if (layer) lastPoint = anchorToPoint(layer, drawingFrom!);
+    }
+    if (lastPoint) {
+      const dx = local.x - lastPoint.x;
+      const dy = local.y - lastPoint.y;
+      const snapped = snapDeltaTo8(dx, dy);
+      local = { x: lastPoint.x + snapped.x, y: lastPoint.y + snapped.y };
+    }
+    setIntermediatePoints((prev) => [...prev, { x: local.x, y: local.y }]);
   };
 
   const handleMove = () => {

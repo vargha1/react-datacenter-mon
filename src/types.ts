@@ -55,4 +55,6 @@ export interface Shape {
   name?: string;
   // true if this shape was auto-created by joining lines into a polygon
   generatedFromLines?: boolean;
+  // optional image URL to display inside the shape (when supported)
+  image?: string | null;
 }
