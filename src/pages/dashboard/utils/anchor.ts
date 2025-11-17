@@ -86,16 +86,14 @@ export function createAnchor(
       side: best.side,
       t: best.t,
     } as AnchorDescriptor;
-    if ((window as unknown as Record<string, unknown>).__ANCHOR_DEBUG__)
-      console.debug("createAnchor rect", { shapeId, px, py, localP, anchor });
+    // debug removed
     return anchor;
   }
 
   if (type === "Circle") {
     const angle = Math.atan2(localP.y, localP.x);
     const anchor = { shapeId, kind: "circle", angle } as AnchorDescriptor;
-    if ((window as unknown as Record<string, unknown>).__ANCHOR_DEBUG__)
-      console.debug("createAnchor circle", { shapeId, px, py, localP, anchor });
+    // debug removed
     return anchor;
   }
 

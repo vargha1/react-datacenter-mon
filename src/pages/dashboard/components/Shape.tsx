@@ -183,7 +183,7 @@ export const ShapeComponent = React.forwardRef<
       fillPatternY: patternY,
       fillPatternRepeat: "no-repeat" as const,
     };
-  }, [loadedImage, shape]);
+  }, [loadedImage, shape, renderHeight, renderRadius, renderWidth]);
 
   const patternProps = computePatternProps();
 
@@ -278,16 +278,46 @@ export const ShapeComponent = React.forwardRef<
           }}
           onTransformEnd={(e) => {
             const node = e.target as Konva.Rect;
-            const newW = (node.width() ?? 0) * (node.scaleX() ?? 1);
-            const newH = (node.height() ?? 0) * (node.scaleY() ?? 1);
+            const baseW = node.width() ?? 0;
+            const baseH = node.height() ?? 0;
+            const scaleX = node.scaleX() ?? 1;
+            const scaleY = node.scaleY() ?? 1;
+            const newW = baseW * scaleX;
+            const newH = baseH * scaleY;
             node.scaleX(1);
             node.scaleY(1);
-            onDragEnd?.({
-              x: node.x(),
-              y: node.y(),
-              width: newW,
-              height: newH,
-            });
+
+            // If an image is available, try to preserve its aspect ratio when persisting size
+            if (loadedImage && loadedImage.width && loadedImage.height) {
+              const aspect =
+                (loadedImage.width || 1) / (loadedImage.height || 1);
+              const prevW = shape.width ?? baseW;
+              const prevH = shape.height ?? baseH;
+              const ratioW = Math.abs(newW - prevW) / (prevW || 1);
+              const ratioH = Math.abs(newH - prevH) / (prevH || 1);
+
+              let finalW = newW;
+              let finalH = newH;
+              if (ratioW >= ratioH) {
+                finalH = Math.max(1, Math.round(finalW / aspect));
+              } else {
+                finalW = Math.max(1, Math.round(finalH * aspect));
+              }
+
+              onDragEnd?.({
+                x: node.x(),
+                y: node.y(),
+                width: finalW,
+                height: finalH,
+              });
+            } else {
+              onDragEnd?.({
+                x: node.x(),
+                y: node.y(),
+                width: newW,
+                height: newH,
+              });
+            }
           }}
         />
 

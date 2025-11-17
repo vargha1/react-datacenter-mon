@@ -15,7 +15,12 @@ import { ShapeComponent } from "./components/Shape";
 import { ConnectionLine } from "./components/Connection";
 import { PropertiesPanel } from "./components/PropertiesPanel";
 import { Circle as KonvaCircle } from "react-konva";
-import { distance, snapDeltaTo8 } from "./utils/helpers";
+import {
+  distance,
+  snapDeltaTo8,
+  polygonVertices,
+  projectPointToSegment,
+} from "./utils/helpers";
 
 const STROKE = "#222";
 const STROKE_WIDTH = 2;
@@ -134,8 +139,6 @@ export default function DashboardPage() {
       void err;
     }
   }, []);
-
-  // Save state
 
   // extract stage position/scale into stable values for the dependency array
   const _stageScaleX = stageRef.current?.scaleX?.();
@@ -583,21 +586,59 @@ export default function DashboardPage() {
       const isShape = shapes.some((s) => s.id === nid);
       const isConnection = connections.some((c) => c.id === nid);
       if (!isShape && !isConnection) continue;
-
-      const r = node.getClientRect();
-      const box = {
-        x: r.x - CLAMP_MARGIN,
-        y: r.y - CLAMP_MARGIN,
-        w: r.width + CLAMP_MARGIN * 2,
-        h: r.height + CLAMP_MARGIN * 2,
-      };
-      if (
-        p.x >= box.x &&
-        p.x <= box.x + box.w &&
-        p.y >= box.y &&
-        p.y <= box.y + box.h
-      ) {
-        return node;
+      // For Line nodes perform a distance-to-segment hit test which is
+      // much tighter than relying on getClientRect (which can be large
+      // depending on transforms/stroke). This prevents distant clicks
+      // from accidentally hitting connections.
+      if (cls === "Line") {
+        try {
+          const verts = polygonVertices(node as Konva.Node);
+          if (verts && verts.length >= 2) {
+            // test against each segment
+            for (let i = 0; i < verts.length - 1; i++) {
+              const a = verts[i];
+              const b = verts[i + 1];
+              const proj = projectPointToSegment(p, a, b);
+              const d = distance(proj.point, p);
+              if (d <= CLAMP_MARGIN) return node;
+            }
+          } else {
+            // fallback to bounding box if vertices unavailable
+            const r = node.getClientRect();
+            const box = {
+              x: r.x - CLAMP_MARGIN,
+              y: r.y - CLAMP_MARGIN,
+              w: r.width + CLAMP_MARGIN * 2,
+              h: r.height + CLAMP_MARGIN * 2,
+            };
+            if (
+              p.x >= box.x &&
+              p.x <= box.x + box.w &&
+              p.y >= box.y &&
+              p.y <= box.y + box.h
+            ) {
+              return node;
+            }
+          }
+        } catch (err) {
+          void err;
+        }
+      } else {
+        const r = node.getClientRect();
+        const box = {
+          x: r.x - CLAMP_MARGIN,
+          y: r.y - CLAMP_MARGIN,
+          w: r.width + CLAMP_MARGIN * 2,
+          h: r.height + CLAMP_MARGIN * 2,
+        };
+        if (
+          p.x >= box.x &&
+          p.x <= box.x + box.w &&
+          p.y >= box.y &&
+          p.y <= box.y + box.h
+        ) {
+          return node;
+        }
       }
     }
     return null;
@@ -764,10 +805,60 @@ export default function DashboardPage() {
     } catch (err) {
       void err;
     }
+    // If drawing, cancel it.
     if (isDrawing) {
       setIsDrawing(false);
       setDrawingFrom(null);
       setIntermediatePoints([]);
+      return;
+    }
+
+    // If not drawing, try to delete a connection if right-click is near one.
+    try {
+      const stage = stageRef.current;
+      const layer = layerRef.current;
+      if (!stage || !layer) return;
+      const pos = stage.getPointerPosition();
+      if (!pos) return;
+
+      // find nearest connection by projecting onto each connection's segments
+      let nearestId: string | null = null;
+      let nearestDist = Infinity;
+      for (const c of connections) {
+        // find rendered node for connection
+        let node: Konva.Node | null = null;
+        try {
+          node = stage.findOne(`#${c.id}`) as Konva.Node | null;
+        } catch (err) {
+          void err;
+        }
+        if (!node) {
+          try {
+            node = layer.findOne(`#${c.id}`) as Konva.Node | null;
+          } catch (err) {
+            void err;
+          }
+        }
+        if (!node) continue;
+        const verts = polygonVertices(node);
+        if (!verts || verts.length < 2) continue;
+        for (let i = 0; i < verts.length - 1; i++) {
+          const a = verts[i];
+          const b = verts[i + 1];
+          const proj = projectPointToSegment(pos, a, b);
+          const d = distance(proj.point, pos);
+          if (d < nearestDist) {
+            nearestDist = d;
+            nearestId = c.id;
+          }
+        }
+      }
+
+      if (nearestId && nearestDist <= CLAMP_MARGIN) {
+        handleRemoveConnection(nearestId);
+      }
+    } catch (err) {
+      void err;
     }
   };
 
@@ -815,7 +906,90 @@ export default function DashboardPage() {
 
   const handleRemoveConnection = (id: string) => {
     pushHistory();
-    setConnections((prev) => prev.filter((c) => c.id !== id));
+    setConnections((prev) => {
+      const layer = layerRef.current;
+      // Compute anchor points in stage space for each connection
+      const connPts = new Map<string, { from: Point; to: Point }>();
+      for (const c of prev) {
+        if (!layer) {
+          connPts.set(c.id, { from: { x: 0, y: 0 }, to: { x: 0, y: 0 } });
+          continue;
+        }
+        try {
+          // Prefer the actual rendered Line node's vertices (includes intermediate points)
+          const stage = layer.getStage?.() ?? null;
+          let node: Konva.Node | null = null;
+          if (stage) node = stage.findOne(`#${c.id}`) as Konva.Node | null;
+          if (!node) node = (layer.findOne(`#${c.id}`) as Konva.Node) ?? null;
+          if (node) {
+            const verts = polygonVertices(node);
+            if (verts && verts.length >= 2) {
+              connPts.set(c.id, {
+                from: verts[0],
+                to: verts[verts.length - 1],
+              });
+              continue;
+            }
+          }
+
+          // Fallback to anchors
+          connPts.set(c.id, {
+            from: anchorToPoint(layer, c.from),
+            to: anchorToPoint(layer, c.to),
+          });
+        } catch (err) {
+          connPts.set(c.id, { from: { x: 0, y: 0 }, to: { x: 0, y: 0 } });
+        }
+      }
+
+      // Build a directed parent->children map based on direct connection
+      // references. A connection A is considered a parent of B when B's
+      // from.shapeId or to.shapeId equals A.id. We only cascade-delete
+      // children when the clicked connection itself has children. If the
+      // clicked connection has no children, only it is removed.
+      const map = new Map(prev.map((c) => [c.id, c]));
+      if (!map.has(id)) return prev;
+
+      const children = new Map<string, Set<string>>();
+      for (const c of prev) children.set(c.id, new Set());
+
+      for (const c of prev) {
+        // If this endpoint references another connection id that exists,
+        // register that reference as a child relationship on the parent.
+        const tryRegister = (refId: string) => {
+          if (map.has(refId)) {
+            // refId is a parent connection id, so current connection is its child
+            children.get(refId)!.add(c.id);
+          }
+        };
+
+        tryRegister(c.from.shapeId);
+        tryRegister(c.to.shapeId);
+      }
+
+      // If the clicked connection has children, delete it and all its
+      // descendants (transitively). Otherwise delete only the clicked one.
+      const toRemove = new Set<string>();
+      if ((children.get(id) || new Set()).size > 0) {
+        // DFS to collect descendants
+        const stack: string[] = [id];
+        while (stack.length > 0) {
+          const cur = stack.pop()!;
+          if (toRemove.has(cur)) continue;
+          toRemove.add(cur);
+          const ch = children.get(cur);
+          if (ch) {
+            for (const cId of ch) {
+              if (!toRemove.has(cId)) stack.push(cId);
+            }
+          }
+        }
+      } else {
+        toRemove.add(id);
+      }
+
+      return prev.filter((c) => !toRemove.has(c.id));
+    });
   };
 
   const formShapeFromLines = useCallback(
@@ -1134,7 +1308,7 @@ export default function DashboardPage() {
               shapes.find((s) => s.id === selectedId)?.type !== "line" && (
                 <Transformer
                   ref={transformerRef}
-                  keepRatio={false}
+                  keepRatio={true}
                   rotateEnabled={true}
                   boundBoxFunc={(oldBox, newBox) => {
                     if (newBox.width < 10) return oldBox;
