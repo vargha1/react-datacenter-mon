@@ -17,7 +17,16 @@ export interface PolyAnchor {
   edgeIndex: number;
   t: number;
 }
-export type AnchorDescriptor = RectAnchor | CircleAnchor | PolyAnchor;
+export interface CustomAnchor {
+  shapeId: string;
+  kind: "custom";
+  index: number;
+}
+export type AnchorDescriptor =
+  | RectAnchor
+  | CircleAnchor
+  | PolyAnchor
+  | CustomAnchor;
 
 export interface IntermediatePoint {
   x: number;
@@ -38,7 +47,18 @@ export interface Point {
 
 export interface Shape {
   id: string;
-  type: "rect" | "circle" | "triangle" | "line" | "polygon";
+  type:
+    | "rect"
+    | "circle"
+    | "triangle"
+    | "line"
+    | "polygon"
+    | "ups"
+    | "transformer"
+    | "surge_arrester"
+    | "selector_switch" // this one is a circle and doesn't have anchor points
+    | "rectifier"
+    | "RCBO";
   x: number;
   y: number;
   fill: string;
@@ -57,4 +77,7 @@ export interface Shape {
   generatedFromLines?: boolean;
   // optional image URL to display inside the shape (when supported)
   image?: string | null;
+  // optional explicit anchor points in the shape's local coordinate space.
+  // These are used when you want connections to attach only to fixed points.
+  anchorPoints?: { x: number; y: number }[];
 }

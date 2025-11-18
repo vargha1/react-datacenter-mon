@@ -10,6 +10,7 @@ interface ConnectionLineProps {
   stroke: string;
   strokeWidth: number;
   onRemove?: (id: string) => void;
+  viewMode?: boolean;
 }
 
 export const ConnectionLine: React.FC<ConnectionLineProps> = ({
@@ -18,6 +19,7 @@ export const ConnectionLine: React.FC<ConnectionLineProps> = ({
   stroke,
   strokeWidth,
   onRemove,
+  viewMode,
 }) => {
   if (!layer) return null;
 
@@ -39,6 +41,7 @@ export const ConnectionLine: React.FC<ConnectionLineProps> = ({
       strokeWidth={strokeWidth}
       onContextMenu={(e) => {
         e.evt.preventDefault();
+        if (viewMode) return;
         onRemove?.(connection.id);
       }}
     />

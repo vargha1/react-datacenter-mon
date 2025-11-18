@@ -35,6 +35,21 @@ export default function DashboardPage() {
   });
   const [scale, setScale] = useState(1);
   const scaleRef = useRef(1);
+  const UPS_SVG = `<?xml version="1.0" encoding="utf-8"?>
+<svg width="83" height="143" viewBox="0 0 83 143" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M21.25 1.25V31.25" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M61.25 1.25V31.25" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M41.25 111.25V141.25" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M81.25 31.25H1.25V111.25H81.25V31.25Z" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M41.25 71.25H1.25" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M81.25 31.25L41.25 71.25" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M41.25 71.25L81.25 111.25" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M11.25 51.25C13.9167 48.5833 16.5833 48.5833 19.25 51.25C21.9167 53.9167 24.5833 53.9167 27.25 51.25" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M11.25 91.25C13.9167 88.5833 16.5833 88.5833 19.25 91.25C21.9167 93.9167 24.5833 93.9167 27.25 91.25" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M55.25 71.25H69.25" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M62.25 64.25V78.25" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+  const UPS_DATA_URL = `data:image/svg+xml;utf8,${encodeURIComponent(UPS_SVG)}`;
   const [shapes, setShapes] = useState<Shape[]>([
     {
       id: crypto.randomUUID(),
@@ -45,6 +60,25 @@ export default function DashboardPage() {
       fill: "",
       width: 120,
       height: 80,
+    },
+    {
+      id: crypto.randomUUID(),
+      name: "UPS",
+      type: "rect",
+      x: 300,
+      y: 140,
+      fontSize: 0,
+      strokeWidth: 0,
+      fill: "",
+      width: 83,
+      height: 143,
+      image: UPS_DATA_URL,
+      // anchorPoints are local coordinates in the shape's space (Rect uses top-left origin)
+      anchorPoints: [
+        { x: 21.25, y: 31.25 }, // top-left connector
+        { x: 61.25, y: 31.25 }, // top-right connector
+        { x: 41.25, y: 0 }, // bottom-center connector
+      ],
     },
     {
       id: crypto.randomUUID(),
@@ -73,6 +107,7 @@ export default function DashboardPage() {
   >([]);
   const [mousePos, setMousePos] = useState<Point | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState(false);
 
   const suppressAutoFormRef = useRef(false);
   const spacePressedRef = useRef(false);
@@ -168,6 +203,7 @@ export default function DashboardPage() {
   }, [shapes, connections, _stageScaleX, _stageX, _stageY]);
 
   const resetAll = useCallback(() => {
+    if (viewMode) return;
     pushHistory();
     historyRef.current = [];
     futureRef.current = [];
@@ -221,7 +257,7 @@ export default function DashboardPage() {
     } catch (err) {
       void err;
     }
-  }, [pushHistory]);
+  }, [pushHistory, viewMode]);
 
   const undo = useCallback(() => {
     if (historyRef.current.length === 0) return;
@@ -294,6 +330,7 @@ export default function DashboardPage() {
   // Keyboard handlers
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
+      if (viewMode) return;
       if (e.key === "Delete") {
         if (selectedId) {
           pushHistory();
@@ -314,11 +351,7 @@ export default function DashboardPage() {
           setIntermediatePoints([]);
         }
       }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
-        e.preventDefault();
-        if (e.shiftKey) redo();
-        else undo();
-      }
+      // undo/redo handled in onKeyDown to avoid duplicate handling
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c") {
         if (selectedId) {
           const s = shapes.find((sh) => sh.id === selectedId);
@@ -347,6 +380,17 @@ export default function DashboardPage() {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === "Space") spacePressedRef.current = true;
       shiftPressedRef.current = e.shiftKey;
+      // If in view mode don't handle editing shortcuts
+      if (viewMode) return;
+
+      // Handle undo/redo here first to avoid double-processing
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+        return;
+      }
+
       handleKey(e);
     };
 
@@ -356,7 +400,7 @@ export default function DashboardPage() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [selectedId, shapes, pushHistory, redo, undo, isDrawing]);
+  }, [selectedId, shapes, pushHistory, redo, undo, isDrawing, viewMode]);
 
   useEffect(() => {
     scaleRef.current = scale;
@@ -444,6 +488,7 @@ export default function DashboardPage() {
       };
 
       onDrop = (ev: DragEvent) => {
+        if (viewMode) return;
         ev.preventDefault();
         try {
           let text = ev.dataTransfer?.getData("application/json");
@@ -547,9 +592,12 @@ export default function DashboardPage() {
         void err;
       }
     };
-  }, [pushHistory]);
+  }, [pushHistory, viewMode]);
 
-  const addShape = (type: Shape["type"]) => {
+  const addShape = (
+    type: Shape["type"],
+    shapePropsFromPayload?: Partial<Shape>
+  ) => {
     const newShape: Shape = {
       id:
         typeof crypto !== "undefined" &&
@@ -561,11 +609,17 @@ export default function DashboardPage() {
       x: 200 + Math.random() * 300,
       y: 200 + Math.random() * 200,
       fill: "",
-      name: type + " " + Math.floor(Math.random() * 1000),
-      ...(type === "rect" && { width: 120, height: 80 }),
+      name:
+        (shapePropsFromPayload?.name as string) ??
+        type + " " + Math.floor(Math.random() * 1000),
+      ...(type === "rect" && {
+        width: 120,
+        height: 80,
+      }),
       ...(type === "circle" && { radius: 50 }),
       ...(type === "triangle" && { radius: 70 }),
       ...(type === "line" && { radius: 100 }),
+      ...((shapePropsFromPayload as Partial<Shape>) || {}),
     };
     pushHistory();
     setShapes((prev) => [...prev, newShape]);
@@ -645,6 +699,7 @@ export default function DashboardPage() {
   }
 
   const handleClick = () => {
+    if (viewMode) return;
     const stage = stageRef.current;
     if (!stage) return;
     const pos = stage.getPointerPosition();
@@ -662,6 +717,9 @@ export default function DashboardPage() {
       setDrawingFrom(anchor);
       setIsDrawing(true);
       setIntermediatePoints([]);
+      // We've just started drawing a connection; do not also add
+      // an intermediate point on the same click — return early.
+      return;
     } else {
       if (nearest && drawingFrom && nearest.id() !== drawingFrom.shapeId) {
         const toAnchor = createAnchor(nearest, pos.x, pos.y);
@@ -800,6 +858,7 @@ export default function DashboardPage() {
   };
 
   const handleStageContextMenu = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    if (viewMode) return;
     try {
       e.evt.preventDefault();
     } catch (err) {
@@ -939,6 +998,7 @@ export default function DashboardPage() {
           });
         } catch (err) {
           connPts.set(c.id, { from: { x: 0, y: 0 }, to: { x: 0, y: 0 } });
+          void err;
         }
       }
 
@@ -1262,6 +1322,8 @@ export default function DashboardPage() {
         onScreenshotFull={screenshotFull}
         stageRef={stageRef}
         onReset={resetAll}
+        viewMode={viewMode}
+        onToggleViewMode={(next) => setViewMode(next)}
       />
       <div className="mt-16">
         <Stage
@@ -1288,12 +1350,17 @@ export default function DashboardPage() {
                 key={shape.id}
                 shape={shape}
                 isSelected={shape.id === selectedId}
-                onSelect={() => setSelectedId(shape.id)}
+                viewMode={viewMode}
+                onSelect={() => {
+                  if (viewMode) return;
+                  setSelectedId(shape.id);
+                }}
                 onDragMove={handleDragMove}
                 ref={(ref) => {
                   shapeRefs.current[shape.id] = ref ?? null;
                 }}
                 onDragEnd={(newProps) => {
+                  if (viewMode) return;
                   pushHistory();
                   setShapes((prev) =>
                     prev.map((s) =>
@@ -1305,11 +1372,95 @@ export default function DashboardPage() {
             ))}
 
             {selectedId &&
+              !viewMode &&
               shapes.find((s) => s.id === selectedId)?.type !== "line" && (
                 <Transformer
                   ref={transformerRef}
-                  keepRatio={true}
                   rotateEnabled={true}
+                  // If the selected shape has an image (SVG), preserve its aspect ratio
+                  keepRatio={
+                    !!shapes.find((s) => s.id === selectedId && s.image)
+                  }
+                  onTransformEnd={() => {
+                    try {
+                      const tr = transformerRef.current;
+                      if (!tr) return;
+                      const nodes = tr.nodes && tr.nodes();
+                      if (!nodes || nodes.length === 0) return;
+                      const node = nodes[0] as Konva.Node;
+                      const nid =
+                        typeof node.id === "function"
+                          ? node.id()
+                          : (node as any).id;
+                      if (!nid) return;
+
+                      // Build updated props depending on node class
+                      const cls = node.getClassName?.() ?? "";
+                      const updated: Partial<Shape> = {};
+                      updated.x =
+                        typeof (node as any).x === "function"
+                          ? (node as any).x()
+                          : (node as any).x;
+                      updated.y =
+                        typeof (node as any).y === "function"
+                          ? (node as any).y()
+                          : (node as any).y;
+                      updated.rotation =
+                        typeof (node as any).rotation === "function"
+                          ? (node as any).rotation()
+                          : (node as any).rotation;
+
+                      if (cls === "Rect") {
+                        const baseW =
+                          typeof (node as any).width === "function"
+                            ? (node as any).width()
+                            : (node as any).width || 0;
+                        const baseH =
+                          typeof (node as any).height === "function"
+                            ? (node as any).height()
+                            : (node as any).height || 0;
+                        const scaleX =
+                          typeof (node as any).scaleX === "function"
+                            ? (node as any).scaleX()
+                            : (node as any).scaleX || 1;
+                        const scaleY =
+                          typeof (node as any).scaleY === "function"
+                            ? (node as any).scaleY()
+                            : (node as any).scaleY || 1;
+                        updated.width = Math.round(baseW * scaleX);
+                        updated.height = Math.round(baseH * scaleY);
+                      } else if (cls === "Circle") {
+                        const r =
+                          typeof (node as any).radius === "function"
+                            ? (node as any).radius()
+                            : (node as any).radius || 0;
+                        const scaleX =
+                          typeof (node as any).scaleX === "function"
+                            ? (node as any).scaleX()
+                            : (node as any).scaleX || 1;
+                        updated.radius = Math.round(r * scaleX);
+                      } else if (cls === "RegularPolygon") {
+                        const r =
+                          typeof (node as any).radius === "function"
+                            ? (node as any).radius()
+                            : (node as any).radius || 0;
+                        const scaleX =
+                          typeof (node as any).scaleX === "function"
+                            ? (node as any).scaleX()
+                            : (node as any).scaleX || 1;
+                        updated.radius = Math.round(r * scaleX);
+                      }
+
+                      pushHistory();
+                      setShapes((prev) =>
+                        prev.map((s) =>
+                          s.id === nid ? { ...s, ...updated } : s
+                        )
+                      );
+                    } catch (err) {
+                      void err;
+                    }
+                  }}
                   boundBoxFunc={(oldBox, newBox) => {
                     if (newBox.width < 10) return oldBox;
                     return newBox;
@@ -1325,6 +1476,7 @@ export default function DashboardPage() {
                 stroke={STROKE}
                 strokeWidth={STROKE_WIDTH}
                 onRemove={handleRemoveConnection}
+                viewMode={viewMode}
               />
             ))}
 
@@ -1360,7 +1512,7 @@ export default function DashboardPage() {
           </Layer>
         </Stage>
       </div>
-      {selectedShape && (
+      {selectedShape && !viewMode && (
         <PropertiesPanel
           shape={selectedShape}
           onNameChange={updateSelectedShapeName}

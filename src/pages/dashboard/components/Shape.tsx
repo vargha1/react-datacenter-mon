@@ -41,16 +41,17 @@ export const ShapeComponent = React.forwardRef<
     onSelect: () => void;
     onDragMove: () => void;
     onDragEnd?: (newProps: Partial<Shape>) => void;
+    viewMode?: boolean;
   }
->(({ shape, onSelect, onDragMove, onDragEnd }, ref) => {
+>(({ shape, onSelect, onDragMove, onDragEnd, viewMode = false }, ref) => {
   const commonProps = {
     id: shape.id,
     x: shape.x,
     y: shape.y,
-    draggable: true,
-    onClick: onSelect,
-    onTap: onSelect,
-    onDragMove,
+    draggable: !viewMode,
+    onClick: viewMode ? undefined : onSelect,
+    onTap: viewMode ? undefined : onSelect,
+    onDragMove: viewMode ? undefined : onDragMove,
     rotation: shape.rotation ?? 0,
     perfectDrawEnabled: false,
   } as const;
@@ -58,7 +59,9 @@ export const ShapeComponent = React.forwardRef<
   // default public image to use when a shape has no image set
   const defaultImagePath =
     "/images/ChatGPT-Image-Oct-16--2025--05_49_03-PM.png";
-  const loadedImage = useLoadedImage(defaultImagePath);
+  // prefer a shape-specific image (e.g. UPS SVG data URL) when provided
+  // otherwise fall back to the default public image
+  const loadedImage = useLoadedImage(shape?.image ?? defaultImagePath);
 
   // compute sensible render dimensions from the loaded image when shape has no explicit size
   const MAX_DIM = 200; // maximum dimension to avoid huge shapes
@@ -75,11 +78,24 @@ export const ShapeComponent = React.forwardRef<
   // otherwise derive from image while preserving aspect ratio.
   const imgAspect = imgNaturalW && imgNaturalH ? imgNaturalW / imgNaturalH : 1;
 
+  const rectLikeTypes = [
+    "rect",
+    "ups",
+    "transformer",
+    "surge-arrester",
+    "surge_arrester",
+    "rectifier",
+    "RCBO",
+  ] as const;
+  const isRectLike = (rectLikeTypes as readonly string[]).includes(
+    shape.type as unknown as string
+  );
+
   let renderWidth: number | undefined;
   let renderHeight: number | undefined;
   let renderRadius: number | undefined;
 
-  if (shape.type === "rect") {
+  if (isRectLike) {
     // Priority: both width & height -> use as-is (user override)
     // next: single provided dimension -> derive the other using image aspect ratio
     // otherwise use native image size (scaled) preserving aspect ratio
@@ -119,7 +135,7 @@ export const ShapeComponent = React.forwardRef<
     let topLeftX = 0;
     let topLeftY = 0;
 
-    if (shape.type === "rect") {
+    if (isRectLike) {
       w = renderWidth ?? 120;
       h = renderHeight ?? 80;
       topLeftX = 0;
@@ -187,6 +203,41 @@ export const ShapeComponent = React.forwardRef<
 
   const patternProps = computePatternProps();
 
+  // Compute dynamic anchor points for certain shapes (e.g. UPS)
+  // so anchors update when the shape is resized. Anchor coords
+  // are local to the Konva node (origin/top-left for rect).
+  let computedAnchorPoints: { x: number; y: number }[] | undefined;
+
+  // compute the effective width/height used for rendering rect-like shapes
+  const usedWidth = isRectLike
+    ? renderWidth ?? shape.width ?? (nativeW || 120)
+    : undefined;
+  const usedHeight = isRectLike
+    ? renderHeight ?? shape.height ?? (nativeH || 80)
+    : undefined;
+
+  if (
+    (shape.name === "UPS" || shape.type === "ups") &&
+    typeof usedWidth === "number" &&
+    typeof usedHeight === "number"
+  ) {
+    const topLeft = { x: Math.round(usedWidth * 0.25), y: 0 };
+    const topRight = { x: Math.round(usedWidth * 0.75), y: 0 };
+    const bottomCenter = {
+      x: Math.round(usedWidth / 2),
+      y: Math.round(usedHeight),
+    };
+    // User requested order: bottom center, top-left, top-right
+    computedAnchorPoints = [bottomCenter, topLeft, topRight];
+  }
+
+  const nodeCommonProps = {
+    ...commonProps,
+    // prefer dynamic UPS anchors when computed, otherwise use any
+    // explicit anchorPoints specified on the shape object
+    anchorPoints: computedAnchorPoints ?? shape.anchorPoints ?? undefined,
+  } as const;
+
   // Auto-resize shape to image-derived dimensions once when image loads
   const autoSizedRef = React.useRef(false);
   React.useEffect(() => {
@@ -194,7 +245,14 @@ export const ShapeComponent = React.forwardRef<
     if (autoSizedRef.current) return;
 
     const newProps: Partial<Shape> = {};
-    if (shape.type === "rect") {
+    if (
+      shape.type === "rect" ||
+      shape.type === "ups" ||
+      shape.type === "transformer" ||
+      shape.type === "surge_arrester" ||
+      shape.type === "rectifier" ||
+      shape.type === "RCBO"
+    ) {
       if (typeof shape.width !== "number" && typeof renderWidth === "number") {
         newProps.width = renderWidth;
       }
@@ -242,11 +300,11 @@ export const ShapeComponent = React.forwardRef<
     draggedP2: initialP2,
   });
 
-  if (shape.type === "rect") {
+  if (isRectLike) {
     return (
       <>
         <Rect
-          {...commonProps}
+          {...nodeCommonProps}
           ref={ref as React.RefObject<Konva.Rect>}
           width={renderWidth ?? 120}
           height={renderHeight ?? 80}
@@ -261,6 +319,7 @@ export const ShapeComponent = React.forwardRef<
           stroke="#000"
           strokeWidth={shape.strokeWidth ?? 2}
           onDragMove={(e) => {
+            if (viewMode) return;
             const evt = (e.evt as MouseEvent) ?? null;
             if (evt?.shiftKey) {
               const node = e.target as Konva.Rect;
@@ -273,10 +332,12 @@ export const ShapeComponent = React.forwardRef<
             onDragMove();
           }}
           onDragEnd={(e) => {
+            if (viewMode) return;
             const node = e.target as Konva.Rect;
             onDragEnd?.({ x: node.x(), y: node.y() });
           }}
           onTransformEnd={(e) => {
+            if (viewMode) return;
             const node = e.target as Konva.Rect;
             const baseW = node.width() ?? 0;
             const baseH = node.height() ?? 0;
@@ -309,6 +370,7 @@ export const ShapeComponent = React.forwardRef<
                 y: node.y(),
                 width: finalW,
                 height: finalH,
+                rotation: node.rotation(),
               });
             } else {
               onDragEnd?.({
@@ -316,6 +378,7 @@ export const ShapeComponent = React.forwardRef<
                 y: node.y(),
                 width: newW,
                 height: newH,
+                rotation: node.rotation(),
               });
             }
           }}
@@ -326,7 +389,7 @@ export const ShapeComponent = React.forwardRef<
           x={(shape.x ?? 0) + (renderWidth ?? 120) / 2}
           y={(shape.y ?? 0) + (renderHeight ?? 80) / 2}
           text={shape.name ?? (shape.id ? shape.id.slice(0, 6) : "")}
-          fontSize={shape.fontSize ?? 12}
+          fontSize={shape?.fontSize ?? 12}
           fill="#111"
           ref={(node) => {
             if (node) {
@@ -345,11 +408,11 @@ export const ShapeComponent = React.forwardRef<
     );
   }
 
-  if (shape.type === "circle") {
+  if (shape.type === "circle" || shape.type === "selector_switch") {
     return (
       <>
         <Circle
-          {...commonProps}
+          {...nodeCommonProps}
           ref={ref as React.RefObject<Konva.Circle>}
           radius={renderRadius ?? 50}
           // use contain-scaling and center the image for circle as well
@@ -363,6 +426,7 @@ export const ShapeComponent = React.forwardRef<
           stroke="#000"
           strokeWidth={shape.strokeWidth ?? 2}
           onDragMove={(e) => {
+            if (viewMode) return;
             const evt = (e.evt as MouseEvent) ?? null;
             if (evt?.shiftKey) {
               const node = e.target as Konva.Circle;
@@ -375,10 +439,12 @@ export const ShapeComponent = React.forwardRef<
             onDragMove();
           }}
           onDragEnd={(e) => {
+            if (viewMode) return;
             const node = e.target as Konva.Circle;
             onDragEnd?.({ x: node.x(), y: node.y() });
           }}
           onTransformEnd={(e) => {
+            if (viewMode) return;
             const node = e.target as Konva.Circle;
             const newR = (node.radius() ?? 0) * (node.scaleX() ?? 1);
             node.scaleX(1);
@@ -395,7 +461,7 @@ export const ShapeComponent = React.forwardRef<
           x={shape.x ?? 0}
           y={shape.y ?? 0}
           text={shape.name ?? (shape.id ? shape.id.slice(0, 6) : "")}
-          fontSize={shape.fontSize ?? 12}
+          fontSize={shape?.fontSize ?? 12}
           fill="#111"
           ref={(node) => {
             if (node) {
@@ -418,7 +484,7 @@ export const ShapeComponent = React.forwardRef<
     return (
       <>
         <RegularPolygon
-          {...commonProps}
+          {...nodeCommonProps}
           ref={ref as React.RefObject<Konva.RegularPolygon>}
           sides={3}
           radius={shape.radius ?? 70}
@@ -428,6 +494,7 @@ export const ShapeComponent = React.forwardRef<
           stroke="#000"
           strokeWidth={shape.strokeWidth ?? 2}
           onDragMove={(e) => {
+            if (viewMode) return;
             const evt = (e.evt as MouseEvent) ?? null;
             if (evt?.shiftKey) {
               const node = e.target as Konva.RegularPolygon;
@@ -440,10 +507,12 @@ export const ShapeComponent = React.forwardRef<
             onDragMove();
           }}
           onDragEnd={(e) => {
+            if (viewMode) return;
             const node = e.target as Konva.RegularPolygon;
             onDragEnd?.({ x: node.x(), y: node.y() });
           }}
           onTransformEnd={(e) => {
+            if (viewMode) return;
             const node = e.target as Konva.RegularPolygon;
             const newR = (node.radius() ?? 0) * (node.scaleX() ?? 1);
             node.scaleX(1);
@@ -460,7 +529,7 @@ export const ShapeComponent = React.forwardRef<
           x={shape.x ?? 0}
           y={shape.y ?? 0}
           text={shape.name ?? (shape.id ? shape.id.slice(0, 6) : "")}
-          fontSize={shape.fontSize ?? 12}
+          fontSize={shape?.fontSize ?? 12}
           fill="#111"
           ref={(node) => {
             if (node) {
@@ -483,7 +552,7 @@ export const ShapeComponent = React.forwardRef<
     return (
       <>
         <Line
-          {...commonProps}
+          {...nodeCommonProps}
           ref={ref as React.RefObject<Konva.Line>}
           points={shape.points}
           closed={true}
@@ -498,6 +567,7 @@ export const ShapeComponent = React.forwardRef<
           stroke="#000"
           strokeWidth={shape.strokeWidth ?? 2}
           onDragMove={(e) => {
+            if (viewMode) return;
             const evt = (e.evt as MouseEvent) ?? null;
             if (evt?.shiftKey) {
               const node = e.target as Konva.Line;
@@ -510,10 +580,12 @@ export const ShapeComponent = React.forwardRef<
             onDragMove();
           }}
           onDragEnd={(e) => {
+            if (viewMode) return;
             const node = e.target as Konva.Line;
             onDragEnd?.({ x: node.x(), y: node.y() });
           }}
           onTransformEnd={(e) => {
+            if (viewMode) return;
             const node = e.target as Konva.Line;
             const scaleX = node.scaleX() ?? 1;
             const scaleY = node.scaleY() ?? 1;
@@ -538,7 +610,7 @@ export const ShapeComponent = React.forwardRef<
           x={shape.x ?? 0}
           y={shape.y ?? 0}
           text={shape.name ?? (shape.id ? shape.id.slice(0, 6) : "")}
-          fontSize={shape.fontSize ?? 12}
+          fontSize={shape?.fontSize ?? 12}
           fill="#111"
           ref={(node) => {
             if (node) {
@@ -603,6 +675,7 @@ export const ShapeComponent = React.forwardRef<
           perfectDrawEnabled={false}
           draggable
           onDragStart={() => {
+            if (viewMode) return;
             setDragState({
               isDragging: true,
               draggedP1: p1,
@@ -610,6 +683,7 @@ export const ShapeComponent = React.forwardRef<
             });
           }}
           onDragMove={(e) => {
+            if (viewMode) return;
             const node = e.target as Konva.Line;
             const evt = (e.evt as MouseEvent) ?? null;
             let delta = { x: node.x(), y: node.y() };
@@ -628,6 +702,7 @@ export const ShapeComponent = React.forwardRef<
             onDragMove();
           }}
           onDragEnd={(e) => {
+            if (viewMode) return;
             const node = e.target as Konva.Line;
             const delta = { x: node.x(), y: node.y() };
             const newP1 = { x: p1.x + delta.x, y: p1.y + delta.y };
@@ -651,6 +726,7 @@ export const ShapeComponent = React.forwardRef<
           draggable
           hitStrokeWidth={20}
           onDragStart={() => {
+            if (viewMode) return;
             setDragState({
               isDragging: true,
               draggedP1: p1,
@@ -658,6 +734,7 @@ export const ShapeComponent = React.forwardRef<
             });
           }}
           onDragMove={(e) => {
+            if (viewMode) return;
             const node = e.target as Konva.Circle;
             const evt = (e.evt as MouseEvent) ?? null;
             let newPos = { x: node.x(), y: node.y() };
@@ -678,6 +755,7 @@ export const ShapeComponent = React.forwardRef<
             onDragMove();
           }}
           onDragEnd={(e) => {
+            if (viewMode) return;
             const node = e.target as Konva.Circle;
             const newPos = { x: node.x(), y: node.y() };
 
@@ -695,6 +773,7 @@ export const ShapeComponent = React.forwardRef<
           draggable
           hitStrokeWidth={20}
           onDragStart={() => {
+            if (viewMode) return;
             setDragState({
               isDragging: true,
               draggedP1: p1,
@@ -702,6 +781,7 @@ export const ShapeComponent = React.forwardRef<
             });
           }}
           onDragMove={(e) => {
+            if (viewMode) return;
             const node = e.target as Konva.Circle;
             const evt = (e.evt as MouseEvent) ?? null;
             let newPos = { x: node.x(), y: node.y() };
@@ -722,6 +802,7 @@ export const ShapeComponent = React.forwardRef<
             onDragMove();
           }}
           onDragEnd={(e) => {
+            if (viewMode) return;
             const node = e.target as Konva.Circle;
             const newPos = { x: node.x(), y: node.y() };
 

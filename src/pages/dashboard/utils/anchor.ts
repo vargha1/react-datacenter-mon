@@ -43,6 +43,52 @@ export function createAnchor(
     }
   }
 
+  // If the node exposes explicit anchor points (set via the shape's
+  // `anchorPoints` attribute), prefer the nearest provided anchor.
+  // Anchor points are expected to be in the shape's local coordinate
+  // space (same origin as the Konva node). We convert them to stage
+  // coordinates and pick the closest to the pointer.
+  try {
+    const customAnchors =
+      typeof (shape as any).getAttr === "function"
+        ? (shape as any).getAttr("anchorPoints")
+        : (shape as any).anchorPoints;
+    if (Array.isArray(customAnchors) && customAnchors.length > 0) {
+      const trRaw2 = (
+        shape as unknown as { getAbsoluteTransform?: () => unknown }
+      ).getAbsoluteTransform?.();
+      if (
+        trRaw2 &&
+        typeof trRaw2 === "object" &&
+        trRaw2 !== null &&
+        "point" in trRaw2 &&
+        typeof (trRaw2 as { point?: unknown }).point === "function"
+      ) {
+        let bestIdx = 0;
+        let bestD = Infinity;
+        for (let i = 0; i < customAnchors.length; i++) {
+          const a = customAnchors[i];
+          try {
+            const stagePt = (trRaw2 as { point: (p: Point) => Point }).point({
+              x: a.x,
+              y: a.y,
+            });
+            const d = distance(stagePt, { x: px, y: py });
+            if (d < bestD) {
+              bestD = d;
+              bestIdx = i;
+            }
+          } catch (err) {
+            void err;
+          }
+        }
+        return { shapeId, kind: "custom", index: bestIdx } as AnchorDescriptor;
+      }
+    }
+  } catch (err) {
+    void err;
+  }
+
   if (type === "Rect") {
     const r = shape as Konva.Rect;
     const w =
@@ -208,6 +254,41 @@ export function anchorToPoint(
         ? r.y()
         : (r as unknown as { y?: number }).y ?? 0) + local.y;
     return stageToLayer({ x, y });
+  }
+
+  if (anchor.kind === "custom") {
+    // custom anchors: read the anchorPoints attribute from the node
+    const getCustom =
+      typeof (node as any).getAttr === "function"
+        ? (node as any).getAttr("anchorPoints")
+        : (node as any).anchorPoints;
+    if (Array.isArray(getCustom) && getCustom.length > (anchor as any).index) {
+      const local = getCustom[(anchor as any).index];
+      const trRaw4 = (
+        node as unknown as { getAbsoluteTransform?: () => unknown }
+      ).getAbsoluteTransform?.();
+      if (
+        trRaw4 &&
+        typeof trRaw4 === "object" &&
+        trRaw4 !== null &&
+        "point" in trRaw4 &&
+        typeof (trRaw4 as { point?: unknown }).point === "function"
+      ) {
+        return stageToLayer(
+          (trRaw4 as { point: (p: Point) => Point }).point(local)
+        );
+      }
+      // fallback: assume local coords are relative to node.x/node.y
+      const x =
+        (typeof (node as any).x === "function"
+          ? (node as any).x()
+          : (node as any).x || 0) + local.x;
+      const y =
+        (typeof (node as any).y === "function"
+          ? (node as any).y()
+          : (node as any).y || 0) + local.y;
+      return stageToLayer({ x, y });
+    }
   }
 
   if (anchor.kind === "circle" && type === "Circle") {

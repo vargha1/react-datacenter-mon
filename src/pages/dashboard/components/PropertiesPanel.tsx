@@ -44,9 +44,9 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
             min={0}
             max={72}
             className="w-full border rounded px-2 py-1 text-sm"
-            value={shape.fontSize ?? 14}
+            value={shape?.fontSize ?? 14}
             onChange={(e) => {
-              const v = Number(e.target.value) || 14;
+              const v = Number(e.target.value);
               if (v >= 0 && v <= 72) onFontSizeChange(v);
             }}
           />

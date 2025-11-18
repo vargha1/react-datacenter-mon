@@ -1,13 +1,16 @@
 import React, { useState } from "react";
 import type Konva from "konva";
 import type { Shape } from "../../../types";
+import { getDataUrl as getSvgDataUrl } from "../assets/svgs";
 
 interface CanvasHeaderProps {
-  onAddShape: (type: Shape["type"]) => void;
+  onAddShape: (type: Shape["type"], shapeProps?: Partial<Shape>) => void;
   onScreenshotCurrent?: () => void;
   onScreenshotFull?: () => void;
   stageRef?: React.RefObject<Konva.Stage | null>;
   onReset?: () => void;
+  viewMode?: boolean;
+  onToggleViewMode?: (next: boolean) => void;
 }
 
 export const CanvasHeader: React.FC<CanvasHeaderProps> = ({
@@ -16,14 +19,107 @@ export const CanvasHeader: React.FC<CanvasHeaderProps> = ({
   onScreenshotFull,
   stageRef,
   onReset,
+  viewMode,
+  onToggleViewMode,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
 
-  const shapeTypes: Array<{ type: Shape["type"]; label: string }> = [
-    { type: "rect", label: "Rectangle" },
-    { type: "circle", label: "Circle" },
-    { type: "triangle", label: "Triangle" },
-    { type: "line", label: "Line" },
+  const UPS_SVG = `<?xml version="1.0" encoding="utf-8"?>
+<svg width="83" height="143" viewBox="0 0 83 143" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M21.25 1.25V31.25" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M61.25 1.25V31.25" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M41.25 111.25V141.25" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M81.25 31.25H1.25V111.25H81.25V31.25Z" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M41.25 71.25H1.25" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M81.25 31.25L41.25 71.25" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M41.25 71.25L81.25 111.25" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M11.25 51.25C13.9167 48.5833 16.5833 48.5833 19.25 51.25C21.9167 53.9167 24.5833 53.9167 27.25 51.25" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M11.25 91.25C13.9167 88.5833 16.5833 88.5833 19.25 91.25C21.9167 93.9167 24.5833 93.9167 27.25 91.25" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M55.25 71.25H69.25" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M62.25 64.25V78.25" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`;
+  const UPS_DATA_URL = `data:image/svg+xml;utf8,${encodeURIComponent(UPS_SVG)}`;
+
+  const shapeTypes: Array<{
+    type: string;
+    label: string;
+    shapeProps?: Partial<Shape>;
+  }> = [
+    {
+      type: "rect",
+      label: "Rectangle",
+      shapeProps: { width: 120, height: 80 },
+    },
+    {
+      type: "transformer",
+      label: "Transformer",
+      shapeProps: {
+        width: 43,
+        height: 155,
+        image: getSvgDataUrl("transformer")!,
+        fontSize: 0,
+        strokeWidth: 0,
+      },
+    },
+    {
+      type: "surge_arrester",
+      label: "Surge Arrester",
+      shapeProps: {
+        width: 43,
+        height: 173,
+        image: getSvgDataUrl("surge_arrester") ?? undefined,
+        fontSize: 0,
+        strokeWidth: 0,
+      },
+    },
+    {
+      type: "selector_switch",
+      label: "Selector Switch",
+      shapeProps: {
+        width: 120,
+        height: 180,
+        image: getSvgDataUrl("selector_switch") ?? undefined,
+        fontSize: 0,
+        strokeWidth: 0,
+      },
+    },
+    {
+      type: "rectifier",
+      label: "Rectifier",
+      shapeProps: {
+        width: 34,
+        height: 90,
+        image: getSvgDataUrl("rectifier") ?? undefined,
+        fontSize: 0,
+        strokeWidth: 0,
+      },
+    },
+    {
+      type: "RCBO",
+      label: "RCBO",
+      shapeProps: {
+        width: 38,
+        height: 175,
+        image: getSvgDataUrl("RCBO") ?? undefined,
+        fontSize: 0,
+        strokeWidth: 0,
+      },
+    },
+    { type: "circle", label: "Circle", shapeProps: { radius: 50 } },
+    { type: "triangle", label: "Triangle", shapeProps: { radius: 70 } },
+    { type: "line", label: "Line", shapeProps: { radius: 100 } },
+    {
+      type: "ups",
+      label: "UPS",
+      shapeProps: {
+        width: 83,
+        height: 143,
+        image: UPS_DATA_URL,
+        fontSize: 0,
+        strokeWidth: 0,
+        name: "UPS",
+      },
+    },
   ];
 
   const animateZoom = (factor: number) => {
@@ -71,14 +167,19 @@ export const CanvasHeader: React.FC<CanvasHeaderProps> = ({
       <div className="relative">
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+          disabled={!!viewMode}
+          className={`px-4 py-2 ${
+            viewMode
+              ? "bg-gray-200 text-gray-600"
+              : "bg-blue-500 text-white hover:bg-blue-600"
+          } rounded`}
         >
           Add Shape ▼
         </button>
 
-        {isOpen && (
+        {isOpen && !viewMode && (
           <div className="absolute top-full mt-1 bg-white border border-gray-300 rounded shadow-lg">
-            {shapeTypes.map(({ type, label }) => (
+            {shapeTypes.map(({ type, label, shapeProps }) => (
               <div
                 key={type}
                 role="button"
@@ -86,7 +187,7 @@ export const CanvasHeader: React.FC<CanvasHeaderProps> = ({
                 draggable
                 onClick={() => {
                   try {
-                    onAddShape(type);
+                    onAddShape(type as Shape["type"], shapeProps);
                     setIsOpen(false);
                   } catch (err) {
                     void err;
@@ -95,37 +196,19 @@ export const CanvasHeader: React.FC<CanvasHeaderProps> = ({
                 onDragStart={(e: React.DragEvent<HTMLDivElement>) => {
                   try {
                     const dt = e.dataTransfer;
-                    const shapeProps: Partial<Shape> = {
-                      fill: "",
-                      ...(type === "rect" && { width: 120, height: 80 }),
-                      ...(type === "circle" && { radius: 50 }),
-                      ...(type === "triangle" && { radius: 70 }),
-                      ...(type === "line" && { radius: 100 }),
-                    };
+                    const baseProps: Partial<Shape> = { fill: "" };
+                    const mergedShapeProps = {
+                      ...(baseProps as any),
+                      ...(shapeProps || {}),
+                    } as Partial<Shape>;
                     const payload = JSON.stringify({
                       type,
                       fill: "none",
-                      shapeProps,
+                      shapeProps: mergedShapeProps,
                     });
                     dt.setData("application/json", payload);
                     dt.setData("text/plain", payload);
                     dt.effectAllowed = "copy";
-
-                    if (typeof document !== "undefined") {
-                      const img = new Image();
-                      img.src =
-                        "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==";
-                      img.style.position = "absolute";
-                      img.style.left = "-9999px";
-                      img.style.top = "-9999px";
-                      document.body.appendChild(img);
-                      try {
-                        dt.setDragImage(img, 0, 0);
-                      } catch (err) {
-                        void err;
-                      }
-                      setTimeout(() => img.remove(), 200);
-                    }
                   } catch (err) {
                     void err;
                   }
@@ -182,30 +265,45 @@ export const CanvasHeader: React.FC<CanvasHeaderProps> = ({
         </button>
 
         <button
+          disabled={viewMode}
           onClick={() => {
             try {
-              if (
-                typeof window !== "undefined" &&
-                window.confirm("Reset all data? This cannot be undone.")
-              ) {
-                try {
-                  if (onReset) onReset();
-                } catch (err) {
-                  void err;
-                }
-                try {
-                  localStorage.removeItem("circuit-designer-state");
-                } catch (err) {
-                  void err;
+              if (typeof window !== "undefined" && viewMode == false) {
+                if (window.confirm("Reset all data? This cannot be undone.")) {
+                  try {
+                    if (onReset) onReset();
+                  } catch (err) {
+                    void err;
+                  }
+                  try {
+                    localStorage.removeItem("circuit-designer-state");
+                  } catch (err) {
+                    void err;
+                  }
                 }
               }
             } catch (err) {
               void err;
             }
           }}
-          className="px-3 py-1 bg-red-200 text-red-800 rounded hover:bg-red-300 text-sm"
+          className={`px-3 py-1 ${
+            viewMode
+              ? "bg-gray-200 hover:bg-gray-300"
+              : "bg-red-200 text-red-800 hover:bg-red-300"
+          } rounded text-sm`}
         >
           Reset
+        </button>
+
+        <button
+          onClick={() => onToggleViewMode?.(!viewMode)}
+          className={`px-3 py-1 rounded text-sm ${
+            viewMode
+              ? "bg-green-200 text-green-800"
+              : "bg-yellow-200 text-yellow-800 hover:bg-yellow-300"
+          }`}
+        >
+          {viewMode ? "Exit View" : "View Mode"}
         </button>
       </div>
     </div>
